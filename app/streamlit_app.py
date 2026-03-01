@@ -683,6 +683,8 @@ def _try_drive_sync(show_status: bool = True) -> bool:
     try:
         from storage.drive_handler import DriveHandler
         drive = DriveHandler(folder_id=folder_id, credentials_path=creds_path)
+        # Force correct Shared Drive mode regardless of cached config
+        drive.shared_drive = folder_id.startswith("0A")
         pulled_parquets = drive.sync_parquets_from_drive()
         pulled_analysis = drive.sync_analysis_from_drive()
         return bool(pulled_parquets or pulled_analysis)
