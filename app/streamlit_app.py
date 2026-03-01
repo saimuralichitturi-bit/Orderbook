@@ -603,17 +603,60 @@ with st.sidebar:
 # OVERVIEW DASHBOARD (no company selected)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+def _prepare_credentials() -> "str | None":
+    """
+    Return a path to a valid credentials JSON file.
+    Checks (in order):
+      1. Physical credentials.json on disk (local dev)
+      2. st.secrets["GDRIVE_CREDENTIALS_JSON"]  (Streamlit Cloud — JSON string)
+      3. st.secrets["GOOGLE_CREDENTIALS_JSON"]   (alternate key name)
+      4. st.secrets["gcp_service_account"]       (Streamlit Cloud — TOML table)
+    """
+    from config import GDRIVE_CREDENTIALS
+    if Path(GDRIVE_CREDENTIALS).exists():
+        return GDRIVE_CREDENTIALS
+    tmp = Path("/tmp/gcp_credentials.json")
+    for key in ("GDRIVE_CREDENTIALS_JSON", "GOOGLE_CREDENTIALS_JSON"):
+        try:
+            raw = st.secrets.get(key)
+            if raw:
+                tmp.write_text(raw if isinstance(raw, str) else json.dumps(dict(raw)))
+                return str(tmp)
+        except Exception:
+            pass
+    try:
+        sa = st.secrets.get("gcp_service_account")
+        if sa:
+            tmp.write_text(json.dumps(dict(sa)))
+            return str(tmp)
+    except Exception:
+        pass
+    return None
+
+
+def _get_drive_folder_id() -> str:
+    """Return GOOGLE_DRIVE_FOLDER_ID from env or st.secrets."""
+    from config import GDRIVE_FOLDER_ID
+    if GDRIVE_FOLDER_ID:
+        return GDRIVE_FOLDER_ID
+    try:
+        return st.secrets.get("GOOGLE_DRIVE_FOLDER_ID", "")
+    except Exception:
+        return ""
+
+
 def _try_drive_sync(show_status: bool = True) -> bool:
     """
     Attempt to pull parquets + analysis JSONs from Google Drive to local.
     Returns True if any files were downloaded.
     """
-    from config import GDRIVE_CREDENTIALS, GDRIVE_FOLDER_ID
-    if not GDRIVE_FOLDER_ID or not Path(GDRIVE_CREDENTIALS).exists():
+    folder_id = _get_drive_folder_id()
+    creds_path = _prepare_credentials()
+    if not folder_id or not creds_path:
         return False
     try:
         from storage.drive_handler import DriveHandler
-        drive = DriveHandler()
+        drive = DriveHandler(folder_id=folder_id, credentials_path=creds_path)
         pulled_parquets = drive.sync_parquets_from_drive()
         pulled_analysis = drive.sync_analysis_from_drive()
         return bool(pulled_parquets or pulled_analysis)
@@ -681,8 +724,7 @@ if not selected_symbol:
     st.markdown("---")
 
     if all_df.empty:
-        from config import GDRIVE_CREDENTIALS, GDRIVE_FOLDER_ID
-        drive_ok = bool(GDRIVE_FOLDER_ID and Path(GDRIVE_CREDENTIALS).exists())
+        drive_ok = bool(_get_drive_folder_id() and _prepare_credentials())
         if drive_ok:
             st.warning("No data found locally or on Drive. Has the pipeline been run yet?")
             st.markdown(
