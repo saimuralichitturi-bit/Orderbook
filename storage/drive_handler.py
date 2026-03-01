@@ -26,10 +26,10 @@ def _service(credentials_path: str = "credentials.json"):
 
 class DriveHandler:
     def __init__(self, folder_id: str = None, credentials_path: str = None):
-        from config import GDRIVE_FOLDER_ID, GDRIVE_CREDENTIALS, IS_SHARED_DRIVE
+        from config import GDRIVE_FOLDER_ID, GDRIVE_CREDENTIALS
         self.root_id      = (folder_id or GDRIVE_FOLDER_ID).strip()
         self.creds_path   = credentials_path or GDRIVE_CREDENTIALS
-        self.shared_drive = IS_SHARED_DRIVE   # True when folder ID starts with 0A
+        self.shared_drive = self.root_id.startswith("0A")  # derive from actual ID
         self.svc          = _service(self.creds_path)
         self._cache: dict[str, str] = {}
         logger.info(f"Drive mode: {'Shared Drive' if self.shared_drive else 'My Drive'} | root: {self.root_id}")
