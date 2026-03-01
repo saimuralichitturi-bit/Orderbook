@@ -45,10 +45,35 @@ def get_last_scraped_date(symbol: str) -> date:
         return date.today() - timedelta(days=365 * HISTORY_YEARS)
 
 
+def _pull_from_drive_first():
+    """
+    Before scraping NSE, pull any parquets from Drive that we don't have locally.
+    This ensures get_last_scraped_date() sees the correct latest date and we
+    only fetch genuinely new data rather than re-fetching everything.
+    """
+    if not GDRIVE_FOLDER_ID or not Path(GDRIVE_CREDENTIALS).exists():
+        logger.info("Drive not configured — skipping pre-pull")
+        return
+    try:
+        logger.info("Pre-pulling parquets from Drive (skip existing)...")
+        drive = DriveHandler()
+        pulled = drive.sync_parquets_from_drive()
+        if pulled:
+            logger.info(f"Pulled {len(pulled)} parquets from Drive: {pulled}")
+        else:
+            logger.info("All parquets already local (or Drive is empty)")
+    except Exception as e:
+        logger.warning(f"Drive pre-pull failed (continuing anyway): {e}")
+
+
 def run(symbols: list[str] = None):
     start = datetime.now()
     symbols = symbols or WATCHLIST
     logger.info(f"=== Pipeline Start | {len(symbols)} stocks | {start.strftime('%Y-%m-%d %H:%M')} ===")
+
+    # ── Pull missing parquets from Drive first ─────────────────────
+    # This prevents re-scraping 5 years of data on a fresh machine
+    _pull_from_drive_first()
 
     scraper = NSEFilingsScraper()
     total_rows = 0

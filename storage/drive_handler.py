@@ -161,6 +161,124 @@ class DriveHandler:
         buf = self._download_fid(files[0]["id"])
         return pd.read_parquet(buf)
 
+    def download_pdf_by_name(self, filename: str, subfolder: str = "pdfs") -> io.BytesIO | None:
+        """Find and download a PDF from the Drive pdfs subfolder by filename. Returns BytesIO or None."""
+        try:
+            parent = self._get_or_create(subfolder)
+            q = f"name='{filename}' and '{parent}' in parents and trashed=false"
+            files = self.svc.files().list(
+                q=q, fields="files(id,name)", **self._list_kwargs()
+            ).execute().get("files", [])
+            if not files:
+                return None
+            buf = self._download_fid(files[0]["id"])
+            logger.info(f"Downloaded from Drive: {filename}")
+            return buf
+        except Exception as e:
+            logger.warning(f"Drive PDF download failed ({filename}): {e}")
+            return None
+
+    # ── List files ────────────────────────────────────────────────
+
+    def list_files(self, subfolder: str = "parquet") -> list[str]:
+        """Return filenames available in a Drive subfolder."""
+        try:
+            parent = self._get_or_create(subfolder)
+            q = (
+                f"'{parent}' in parents and trashed=false "
+                f"and mimeType!='application/vnd.google-apps.folder'"
+            )
+            results = []
+            page_token = None
+            while True:
+                kwargs = dict(q=q, fields="nextPageToken,files(id,name)", pageSize=200)
+                kwargs.update(self._list_kwargs())
+                if page_token:
+                    kwargs["pageToken"] = page_token
+                resp = self.svc.files().list(**kwargs).execute()
+                results.extend(f["name"] for f in resp.get("files", []))
+                page_token = resp.get("nextPageToken")
+                if not page_token:
+                    break
+            return results
+        except Exception as e:
+            logger.warning(f"Drive list_files failed ({subfolder}): {e}")
+            return []
+
+    # ── Sync FROM Drive → local ────────────────────────────────────
+
+    def sync_parquets_from_drive(self, local_dir: "Path | None" = None) -> list[str]:
+        """
+        Download all parquet files from Drive that are missing locally.
+        Returns list of filenames that were downloaded.
+        Safe to call repeatedly — skips files already present locally.
+        """
+        from config import PARQUET_DIR
+        target = local_dir or PARQUET_DIR
+        target.mkdir(parents=True, exist_ok=True)
+
+        remote_files = self.list_files("parquet")
+        parquet_files = [f for f in remote_files if f.endswith(".parquet")]
+
+        if not parquet_files:
+            logger.info("No parquet files found on Drive.")
+            return []
+
+        downloaded = []
+        for fname in parquet_files:
+            local_path = target / fname
+            if local_path.exists():
+                logger.debug(f"Already local: {fname}")
+                continue
+            try:
+                buf = self._download_fid(self._find_file_id(fname, "parquet"))
+                if buf:
+                    local_path.write_bytes(buf.read())
+                    downloaded.append(fname)
+                    logger.info(f"Pulled from Drive: {fname}")
+            except Exception as e:
+                logger.warning(f"Failed to download {fname} from Drive: {e}")
+
+        if downloaded:
+            logger.info(f"Pulled {len(downloaded)} parquets from Drive → local")
+        return downloaded
+
+    def _find_file_id(self, filename: str, subfolder: str) -> str | None:
+        """Find a file's Drive ID by name within a subfolder."""
+        parent = self._get_or_create(subfolder)
+        q = f"name='{filename}' and '{parent}' in parents and trashed=false"
+        files = self.svc.files().list(
+            q=q, fields="files(id)", **self._list_kwargs()
+        ).execute().get("files", [])
+        return files[0]["id"] if files else None
+
+    def sync_analysis_from_drive(self, local_dir: "Path | None" = None) -> list[str]:
+        """Download analysis JSONs from Drive that are missing locally."""
+        from config import ANALYSIS_DIR
+        target = local_dir or ANALYSIS_DIR
+        target.mkdir(parents=True, exist_ok=True)
+
+        remote_files = self.list_files("analysis")
+        json_files = [f for f in remote_files if f.endswith(".json")]
+
+        downloaded = []
+        for fname in json_files:
+            local_path = target / fname
+            if local_path.exists():
+                continue
+            try:
+                fid = self._find_file_id(fname, "analysis")
+                if fid:
+                    buf = self._download_fid(fid)
+                    local_path.write_bytes(buf.read())
+                    downloaded.append(fname)
+            except Exception as e:
+                logger.warning(f"Failed to download analysis {fname}: {e}")
+
+        if downloaded:
+            logger.info(f"Pulled {len(downloaded)} analysis JSONs from Drive")
+        return downloaded
+
     # ── Bulk sync ─────────────────────────────────────────────────
 
     def sync_all(self):

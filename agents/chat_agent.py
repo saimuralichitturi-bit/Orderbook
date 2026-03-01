@@ -3,9 +3,10 @@ NSE Filing Chat Agent — Multi-provider, batch processing, memory-backed.
 
 Pipeline per question:
   1. Recall relevant past Q&A from Supermemory + Mem0
-  2. Batch-process selected filings (Groq — fast extractor)
-  3. Synthesize final answer (DeepSeek / Gemini / OpenRouter)
-  4. Store Q&A in Supermemory + Mem0 for future recall
+  2. AI relevance-filter all filings to the most relevant ones for the question
+  3. Batch-process selected filings (Groq — fast extractor)
+  4. Synthesize final answer (DeepSeek / Gemini / OpenRouter)
+  5. Store Q&A in Supermemory + Mem0 for future recall
 """
 
 import json
@@ -108,6 +109,62 @@ def _mem0_search(query: str, user_id: str, limit: int = 5) -> str:
 def _chunks(lst, n):
     for i in range(0, len(lst), n):
         yield lst[i:i + n]
+
+
+def _filter_relevant_filings(filings: list[dict], question: str, max_filings: int = 60) -> list[dict]:
+    """
+    Use Groq to score all filings by relevance to the question.
+    Returns the top max_filings most relevant ones (no arbitrary cap on total).
+    Processes in chunks of 80 to stay within token limits.
+    """
+    if len(filings) <= max_filings:
+        return filings
+
+    all_scores: list[float] = []
+    chunk_size = 80
+
+    for chunk_start in range(0, len(filings), chunk_size):
+        chunk = filings[chunk_start:chunk_start + chunk_size]
+        lines = []
+        for i, f in enumerate(chunk):
+            lines.append(
+                f"[{chunk_start + i}] "
+                f"Subject: {str(f.get('subject', ''))[:80]} | "
+                f"Details: {str(f.get('details', ''))[:80]} | "
+                f"Date: {str(f.get('broadcast_dt', ''))[:10]}"
+            )
+
+        prompt = (
+            f"Question: {question}\n\n"
+            f"Rate each filing's relevance to answer this question. Score 0–10 (0=irrelevant, 10=directly answers).\n"
+            f"Return ONLY a JSON array of numbers, one per filing, in order.\n"
+            f"Example for 5 filings: [2, 9, 0, 7, 4]\n\n"
+            f"Filings:\n" + "\n".join(lines)
+        )
+
+        try:
+            resp = _call_groq(
+                "You rate NSE filing relevance. Return only a JSON array of integers.",
+                prompt,
+                max_tokens=500,
+            )
+            match = re.search(r'\[[\d.,\s]+\]', resp)
+            if match:
+                scores = json.loads(match.group())
+                all_scores.extend(float(s) for s in scores[:len(chunk)])
+            else:
+                all_scores.extend([5.0] * len(chunk))
+        except Exception:
+            all_scores.extend([5.0] * len(chunk))
+
+    # Pad if needed
+    if len(all_scores) < len(filings):
+        all_scores.extend([5.0] * (len(filings) - len(all_scores)))
+
+    # Sort by score descending, keep top max_filings
+    scored = sorted(zip(all_scores, range(len(filings))), reverse=True)
+    top_indices = sorted(idx for _, idx in scored[:max_filings])
+    return [filings[i] for i in top_indices]
 
 
 def _load_analysis_json(filing_id: str) -> dict:
@@ -265,6 +322,12 @@ class NSEChatAgent:
         def _prog(cur, tot, msg):
             if progress:
                 progress(cur, tot, msg)
+
+        # ── Step 0: AI relevance filtering ────────────────────────
+        # No hard cap — use Groq to pick most relevant filings for the question
+        if len(filings) > 60:
+            _prog(0, len(filings) + 3, f"Filtering {len(filings)} filings by relevance to your question...")
+            filings = _filter_relevant_filings(filings, question, max_filings=60)
 
         total_steps = len(filings) + 2  # filings + memory recall + synthesis
 

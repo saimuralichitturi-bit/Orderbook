@@ -59,6 +59,9 @@ Return a JSON object with exactly these keys (no extra text, no markdown):
   "sentiment_score": <float -1.0 to 1.0>,
   "key_highlights": ["highlight 1", "highlight 2", "highlight 3"],
   "risk_factors": ["risk 1", "risk 2"],
+  "investment_thesis": "2-3 sentences on WHY this filing matters for investors — what opportunity or risk it creates, what to watch for",
+  "key_catalysts": ["specific catalyst 1 that could drive price movement", "catalyst 2"],
+  "time_horizon": "short-term | medium-term | long-term",
   "financial_data": {{
     "revenue": <number in crores or null>,
     "net_profit": <number in crores or null>,
@@ -291,6 +294,70 @@ def load_analysis(filing_id: str) -> dict:
         with open(path) as f:
             return json.load(f)
     return {}
+
+
+def ai_categorise_subjects(subjects: list[str], categories: list[str]) -> dict:
+    """
+    Use DeepSeek to classify NSE filing subjects into PRIMARY_CATEGORIES.
+    Processes in batches of 30. Returns dict: {subject -> category}.
+    Falls back to Groq if DeepSeek unavailable.
+    """
+    if not subjects:
+        return {}
+
+    cat_list = ", ".join(categories + ["Other"])
+
+    def _classify_batch(batch: list[str]) -> dict:
+        subjects_text = "\n".join(f"{i+1}. {s}" for i, s in enumerate(batch))
+        prompt = (
+            f"Classify each NSE corporate filing subject into one of these categories:\n"
+            f"{cat_list}\n\n"
+            f"Rules:\n"
+            f"- Board meeting outcomes → Management Update\n"
+            f"- Allotment / QIP / NCD / ESOP → Capital Structure\n"
+            f"- AGM / EGM / Postal Ballot / Scrutinizer → Resolution\n"
+            f"- Scheme of Arrangement / Amalgamation → Merger/Demerger\n"
+            f"- If truly unclear → Other\n\n"
+            f"Subjects:\n{subjects_text}\n\n"
+            f"Return ONLY a JSON object: {{\"1\": \"CategoryName\", \"2\": \"CategoryName\", ...}}"
+        )
+        # Try DeepSeek first, then Groq
+        for key, url, model in [
+            (DEEPSEEK_API_KEY, DEEPSEEK_API_URL, DEEPSEEK_MODEL),
+            (GROQ_API_KEY, GROQ_API_URL, GROQ_MODEL),
+        ]:
+            if not key:
+                continue
+            try:
+                from openai import OpenAI
+                client = OpenAI(api_key=key, base_url=url)
+                resp = client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    response_format={"type": "json_object"},
+                    temperature=0.1,
+                    max_tokens=1000,
+                )
+                raw = json.loads(resp.choices[0].message.content.strip())
+                result = {}
+                valid = set(categories) | {"Other"}
+                for idx, cat in raw.items():
+                    i = int(idx) - 1
+                    if 0 <= i < len(batch):
+                        result[batch[i]] = cat if cat in valid else "Other"
+                return result
+            except Exception as e:
+                logger.warning(f"AI categorise batch failed ({model}): {e}")
+        return {}
+
+    # Process in batches of 30
+    combined = {}
+    batch_size = 30
+    for start in range(0, len(subjects), batch_size):
+        batch = subjects[start:start + batch_size]
+        combined.update(_classify_batch(batch))
+
+    return combined
 
 
 def get_financial_timeseries(symbol: str = None) -> pd.DataFrame:
