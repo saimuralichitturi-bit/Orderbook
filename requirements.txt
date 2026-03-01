@@ -1,0 +1,27 @@
+requests>=2.31.0
+pandas>=2.1.0
+pyarrow>=15.0.0          # Parquet read/write
+fastparquet>=2024.2.0    # Alternative Parquet engine
+
+# PDF parsing
+pymupdf>=1.24.0          # Best PDF text extractor (fitz)
+
+# Google Drive
+google-auth>=2.27.0
+google-api-python-client>=2.118.0
+
+# AI
+anthropic>=0.40.0
+openai>=1.50.0        # DeepSeek + Groq (both OpenAI-compatible)
+google-genai>=1.0.0   # Gemini fallback
+
+# Streamlit
+streamlit>=1.40.0
+plotly>=5.24.0
+streamlit-extras>=0.4.7
+
+# Utilities
+python-dotenv>=1.0.1
+loguru>=0.7.2
+tenacity>=8.2.3
+pytz>=2024.1

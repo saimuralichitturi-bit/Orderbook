@@ -1,0 +1,476 @@
+Acquisition
+Acquisition, Capacity Expansion
+Acquisition, Capacity Expansion, Merger/Demerger, New Business
+Acquisition, Capacity Expansion, Sale or Transfer of Assets
+Acquisition, Capital Structure
+Acquisition, Capital Structure, Merger/Demerger
+Acquisition, Capital Structure, Sale or Transfer of Assets
+Acquisition, Conference Call
+Acquisition, Credit Rating
+Acquisition, Investor Presentation
+Acquisition, Merger/Demerger
+Acquisition, Merger/Demerger, Capacity Expansion
+Acquisition, Merger/Demerger, Capital Structure
+Acquisition, Merger/Demerger, Rights Issue
+Acquisition, Merger/Demerger, Sale or Transfer of Assets
+Acquisition, New Business
+Acquisition, New Business, Merger/Demerger
+Acquisition, New Order
+Acquisition, New Order, Capital Structure
+Acquisition, New Order, Merger/Demerger
+Acquisition, New Order, Sale or Transfer of Assets
+Acquisition, Open Offer
+Acquisition, Press Release
+Acquisition, Sale or Transfer of Assets
+Acquisition, Sale or Transfer of Assets, Merger/Demerger
+Acquisition, Sale or Transfer of Assets, Update
+Acquisition, Solar, Merger/Demerger
+Acquisition, Takeover, Open Offer
+Acquisition, Update
+Acquisition, Update, Merger/Demerger
+
+Battery
+Battery, Capacity Expansion, Solar
+Battery, Press Release
+Battery, Update
+
+Bonus
+Bonus Issue
+Bonus Issue, Capital Structure
+Bonus Issue, Capital Structure, Order Win
+Bonus Issue, Capital Structure, Resolution
+Bonus Issue, Order Win
+Bonus Issue, Resolution
+Bonus, Capital Structure
+Bonus, Capital Structure, Update
+Bonus, Press Release
+Bonus, Update
+
+Buyback
+Buyback, Capacity Expansion
+Buyback, New Order
+Buyback, Resolution
+Buyback, Update
+
+Capacity Expansion
+Capacity Expansion, Acquisition
+Capacity Expansion, Acquisition, Merger/Demerger
+Capacity Expansion, Acquisition, Sale or Transfer of Assets
+Capacity Expansion, Battery, Press Release
+Capacity Expansion, Capital Structure
+Capacity Expansion, Capital Structure, Order Win
+Capacity Expansion, Capital Structure, Resolution
+Capacity Expansion, Conference Call
+Capacity Expansion, Incident
+Capacity Expansion, Incident, Regulatory Agency
+Capacity Expansion, Incident, Sale or Transfer of Assets
+Capacity Expansion, Investor Presentation
+Capacity Expansion, Joint Venture
+Capacity Expansion, Joint Venture, Order Win
+Capacity Expansion, Merger/Demerger
+Capacity Expansion, Merger/Demerger, Acquisition
+Capacity Expansion, Merger/Demerger, Acquisition, Update
+Capacity Expansion, Merger/Demerger, Sale or Transfer of Assets, Acquisition
+Capacity Expansion, New Business
+Capacity Expansion, New Business, Press Release
+Capacity Expansion, New Order
+Capacity Expansion, New Order, Press Release
+Capacity Expansion, Order Win
+Capacity Expansion, Order Win, Solar
+Capacity Expansion, Order Win, Capital Structure
+Capacity Expansion, Order Win, Joint Venture
+Capacity Expansion, Press Release
+Capacity Expansion, Press Release, New Order, Capital Structure
+Capacity Expansion, Regulatory Agency, Incident
+Capacity Expansion, Regulatory Agency, Incident, Press Release
+Capacity Expansion, Resolution
+Capacity Expansion, Resolution, Capital Structure
+Capacity Expansion, Rights Issue
+Capacity Expansion, Sale or Transfer of Assets
+Capacity Expansion, Sale or Transfer of Assets, Acquisition, Merger/Demerger
+Capacity Expansion, Sale or Transfer of Assets, Press Release
+Capacity Expansion, Solar
+Capacity Expansion, Solar, Press Release
+Capacity Expansion, Tariffs
+Capacity Expansion, Update
+Capacity Expansion, Update, Sale or Transfer of Assets
+
+Capital Structure
+Capital Structure, Acquisition
+Capital Structure, Acquisition, Merger/Demerger
+Capital Structure, Bonus
+Capital Structure, Bonus Issue
+Capital Structure, Bonus Issue, Capacity Expansion, Resolution
+Capital Structure, Bonus Issue, Resolution
+Capital Structure, Bonus Issue, Order Win
+Capital Structure, Bonus Issue, Update
+Capital Structure, Capacity Expansion
+Capital Structure, Capacity Expansion, Bonus Issue
+Capital Structure, Credit Rating
+Capital Structure, Credit Rating, Press Release
+Capital Structure, Joint Venture
+Capital Structure, Merger/Demerger
+Capital Structure, Name Change
+Capital Structure, New Business
+Capital Structure, New Order
+Capital Structure, Order Win
+Capital Structure, Order Win, Resolution, Bonus Issue
+Capital Structure, Order Win, Tariffs
+Capital Structure, PLI
+Capital Structure, Press Release
+Capital Structure, Resolution
+Capital Structure, Rights Issue
+Capital Structure, Sale or Transfer of Assets
+Capital Structure, Sale or Transfer of Assets, Merger/Demerger, Acquisition, New Order
+Capital Structure, Solar, Capacity Expansion
+Capital Structure, Tariffs
+Capital Structure, Update
+Capital Structure, Update, Bonus
+Capital Structure, Update, Resolution
+Capital Structure, Update, Rights Issue
+Capital Structure, Update, Sale or Transfer of Assets
+
+CDMO, New Order
+
+Conference Call
+Conference Call, Acquisition
+Conference Call, Sale or Transfer of Assets
+Conference Call, Solar
+Conference Call, Update
+
+Credit Rating
+Credit Rating, Capital Structure
+Credit Rating, Press Release
+Credit Rating, Sale or Transfer of Assets
+Credit Rating, Solar
+Credit Rating, Update
+Credit Rating, Update, Merger/Demerger
+
+Delisting
+Delisting, Equity Listing
+
+Dividend
+Dividend, Acquisition
+Dividend, New Order
+Dividend, Sale or Transfer of Assets
+Dividend, Solar
+Dividend, Solar, Update
+Dividend, Update
+Dividend, Update, Acquisition
+Dividend, Update, Capital Structure
+Dividend, Update, Sale or Transfer of Assets
+
+Equity Listing
+Equity Listing, Capital Structure
+Equity Listing, Delisting
+
+EV, Press Release
+
+Exchange Migration
+Exchange Migration, Equity Listing
+
+Incident
+Incident, Capacity Expansion
+Incident, Capacity Expansion, Regulatory Agency
+Incident, Capital Structure
+Incident, New Business
+Incident, Regulatory Agency, Capacity Expansion
+Incident, Tax Related
+
+Investor Meet
+
+Investor Presentation
+Investor Presentation, New Order
+Investor Presentation, Press Release
+Investor Presentation, Press Release, Acquisition
+Investor Presentation, Press Release, Update
+Investor Presentation, Sale or Transfer of Assets
+Investor Presentation, Solar
+Investor Presentation, Update
+Investor Presentation, Update, Dividend
+
+IPO
+IPO, Capital Structure
+IPO, Update
+
+Joint Venture
+Joint Venture, Bonus Issue, Capital Structure
+Joint Venture, Capacity Expansion
+Joint Venture, Capacity Expansion, Order Win
+Joint Venture, Capacity Expansion, Resolution, Order Win
+Joint Venture, Capital Structure
+Joint Venture, Capital Structure, Order Win
+Joint Venture, Capital Structure, Resolution
+Joint Venture, Order Win
+Joint Venture, Order Win, Resolution
+Joint Venture, Resolution
+Joint Venture, Resolution, Capital Structure
+
+Management Update
+
+Merger/Demerger
+Merger/Demerger, Acquisition
+Merger/Demerger, Acquisition, Bonus
+Merger/Demerger, Acquisition, Capacity Expansion
+Merger/Demerger, Acquisition, Capacity Expansion, Rights Issue
+Merger/Demerger, Acquisition, Capacity Expansion, Sale or Transfer of Assets
+Merger/Demerger, Acquisition, Capital Structure
+Merger/Demerger, Acquisition, New Business
+Merger/Demerger, Acquisition, Rights Issue
+Merger/Demerger, Acquisition, Sale or Transfer of Assets
+Merger/Demerger, Acquisition, Sale or Transfer of Assets, New Business
+Merger/Demerger, Battery, Update, Acquisition
+Merger/Demerger, Capital Structure
+Merger/Demerger, Capital Structure, New Business
+Merger/Demerger, Conference Call
+Merger/Demerger, New Business
+Merger/Demerger, New Business, Acquisition
+Merger/Demerger, New Business, Acquisition, Capacity Expansion
+Merger/Demerger, New Business, Acquisition, Update
+Merger/Demerger, New Order
+Merger/Demerger, New Order, New Business
+Merger/Demerger, New Order, Update
+Merger/Demerger, Press Release
+Merger/Demerger, Resolution
+Merger/Demerger, Solar
+Merger/Demerger, Solar, Acquisition
+Merger/Demerger, Solar, Acquisition, Capacity Expansion
+Merger/Demerger, Solar, Acquisition, Update
+Merger/Demerger, Update
+Merger/Demerger, Update, Acquisition
+
+Name Change
+Name Change, Capital Structure
+
+New Business
+New Business, Acquisition
+New Business, Acquisition, Merger/Demerger
+New Business, Acquisition, Press Release
+New Business, Capacity Expansion
+New Business, Capacity Expansion, Solar
+New Business, Capital Structure
+New Business, Capital Structure, Merger/Demerger
+New Business, Credit Rating
+New Business, Merger/Demerger
+New Business, Merger/Demerger, Acquisition
+New Business, Merger/Demerger, Capacity Expansion, Acquisition
+New Business, New Order
+New Business, New Order, Capital Structure
+New Business, PLI
+New Business, Press Release
+New Business, Press Release, New Order
+New Business, Resolution
+New Business, Sale or Transfer of Assets
+New Business, Sale or Transfer of Assets, Acquisition, Merger/Demerger
+New Business, Solar
+New Business, Update
+
+New Order
+New Order, Acquisition, Merger/Demerger, Sale or Transfer of Assets
+New Order, Buyback
+New Order, Capacity Expansion
+New Order, Capital Structure
+New Order, Capital Structure, Merger/Demerger
+New Order, Capital Structure, Rights Issue
+New Order, Conference Call
+New Order, Incident, Regulatory Agency
+New Order, Investor Presentation
+New Order, Merger/Demerger
+New Order, Merger/Demerger, Acquisition
+New Order, Merger/Demerger, Capital Structure
+New Order, New Business
+New Order, New Business, Capital Structure
+New Order, Open Offer
+New Order, Press Release
+New Order, Press Release, Capacity Expansion
+New Order, Press Release, Credit Rating
+New Order, Press Release, Sale or Transfer of Assets
+New Order, Press Release, Solar
+New Order, Press Release, Update
+New Order, Rights Issue
+New Order, Sale or Transfer of Assets
+New Order, Sale or Transfer of Assets, Merger/Demerger, Acquisition, Capital Structure
+New Order, Solar
+New Order, Tax Related
+New Order, Update
+
+Offer For Sale
+Offer For Sale, Sale or Transfer of Assets
+
+Oil Discovery
+Oil Discovery, Press Release
+
+One Time Settlement
+
+Open Offer
+Open Offer, New Order
+Open Offer, Sale or Transfer of Assets
+Open Offer, Update
+
+Order Win
+Order Win, Bonus Issue, Resolution, Capital Structure
+Order Win, Capacity Expansion
+Order Win, Capital Structure
+Order Win, Capital Structure, Bonus Issue
+Order Win, Capital Structure, Capacity Expansion
+Order Win, Joint Venture
+Order Win, Joint Venture, Resolution
+Order Win, Regulatory, Joint Venture
+Order Win, Resolution
+Order Win, Resolution, Capital Structure
+Order Win, Tariffs
+
+Patent
+
+PLI
+
+Press Release
+Press Release, Acquisition
+Press Release, Acquisition, Merger/Demerger
+Press Release, Acquisition, New Order
+Press Release, Acquisition, Sale or Transfer of Assets, Update
+Press Release, Battery
+Press Release, Buyback
+Press Release, Capacity Expansion
+Press Release, Capacity Expansion, Battery
+Press Release, Capacity Expansion, Patent
+Press Release, Capacity Expansion, Update
+Press Release, Capital Structure
+Press Release, Capital Structure, Capacity Expansion
+Press Release, Credit Rating
+Press Release, Dividend
+Press Release, Dividend, Update
+Press Release, Incident, Capacity Expansion
+Press Release, Incident, Regulatory Agency
+Press Release, Investor Presentation
+Press Release, IPO
+Press Release, New Business
+Press Release, New Business, Update
+Press Release, New Order
+Press Release, New Order, Capacity Expansion
+Press Release, Order Win
+Press Release, Order Win, Solar
+Press Release, Patent
+Press Release, Regulatory Agency
+Press Release, Sale or Transfer of Assets
+Press Release, Sale or Transfer of Assets, Acquisition
+Press Release, Smart Meters
+Press Release, Solar
+Press Release, Solar, Capacity Expansion
+Press Release, Tax Related, Update
+Press Release, Update
+Press Release, Update, Sale or Transfer of Assets
+
+Regulatory
+Regulatory Agency
+Regulatory Agency, Incident
+Regulatory Agency, Incident, Capacity Expansion
+Regulatory Agency, Press Release
+Regulatory Agency, Press Release, Incident
+Regulatory Agency, Tax Related
+Regulatory, Capacity Expansion
+Regulatory, Capital Structure
+
+Resolution
+Resolution, Acquisition
+Resolution, Acquisition, Merger/Demerger
+Resolution, Acquisition, New Order
+Resolution, Bonus Issue
+Resolution, Capacity Expansion
+Resolution, Capacity Expansion, Capital Structure
+Resolution, Capital Structure
+Resolution, Capital Structure, Bonus Issue
+Resolution, Capital Structure, Capacity Expansion
+Resolution, Capital Structure, Order Win, Bonus Issue
+Resolution, Capital Structure, Update
+Resolution, Joint Venture
+Resolution, New Order
+Resolution, Order Win
+Resolution, Order Win, Capital Structure
+Resolution, Order Win, Joint Venture
+Resolution, Regulatory
+Resolution, Sale or Transfer of Assets
+Resolution, Tariffs
+Resolution, Tariffs, Capacity Expansion
+
+Results
+
+Rights Issue
+Rights Issue, Acquisition
+Rights Issue, Acquisition, Merger/Demerger
+Rights Issue, Acquisition, Merger/Demerger, New Order
+Rights Issue, Acquisition, Sale or Transfer of Assets
+Rights Issue, Capacity Expansion
+Rights Issue, Capital Structure
+Rights Issue, Merger/Demerger, Acquisition
+Rights Issue, New Order
+Rights Issue, New Order, Capital Structure
+Rights Issue, Solar
+Rights Issue, Solar, New Order
+Rights Issue, Update
+
+Sale or Transfer of Assets
+Sale or Transfer of Assets, Acquisition, Open Offer
+Sale or Transfer of Assets, Capital Structure
+Sale or Transfer of Assets, Conference Call
+Sale or Transfer of Assets, Merger/Demerger, Acquisition
+Sale or Transfer of Assets, New Business
+Sale or Transfer of Assets, New Business, Acquisition, Solar, Update
+Sale or Transfer of Assets, New Business, Press Release
+Sale or Transfer of Assets, New Order
+Sale or Transfer of Assets, New Order, Merger/Demerger
+Sale or Transfer of Assets, Offer For Sale
+Sale or Transfer of Assets, Press Release
+Sale or Transfer of Assets, Press Release, Acquisition
+Sale or Transfer of Assets, Press Release, New Order
+Sale or Transfer of Assets, Solar, Acquisition, Merger/Demerger
+Sale or Transfer of Assets, Update
+
+Solar
+Solar, Acquisition, Merger/Demerger
+Solar, Battery
+Solar, Capacity Expansion
+Solar, Capacity Expansion, New Order
+Solar, Capacity Expansion, Press Release
+Solar, Capital Structure, New Business
+Solar, Conference Call
+Solar, Credit Rating
+Solar, Investor Presentation
+Solar, New Order
+Solar, Press Release
+Solar, Resolution
+
+Takeover
+Takeover, Acquisition
+
+Tariffs
+Tariffs, Capital Structure
+Tariffs, Joint Venture, Capital Structure
+Tariffs, Regulatory
+
+Tax Related
+Tax Related, Capital Structure, Update
+Tax Related, Incident
+Tax Related, New Order
+Tax Related, Regulatory Agency
+Tax Related, Sale or Transfer of Assets
+
+Update
+Update, Acquisition
+Update, Bonus
+Update, Buyback
+Update, Capacity Expansion
+Update, Capital Structure
+Update, Conference Call
+Update, Credit Rating
+Update, Dividend
+Update, Investor Presentation
+Update, IPO
+Update, Merger/Demerger
+Update, Merger/Demerger, Acquisition
+Update, New Business
+Update, Press Release
+Update, Press Release, New Order
+Update, Rights Issue
+Update, Sale or Transfer of Assets
+Update, Tax Related

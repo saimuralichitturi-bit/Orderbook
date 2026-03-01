@@ -1,0 +1,66 @@
+name: Daily NSE Filings Scrape
+
+on:
+  schedule:
+    # 7:00 AM IST = 1:30 AM UTC — before market open
+    - cron: "30 1 * * 1-5"   # Mon–Fri only
+
+  # Allow manual trigger from GitHub UI
+  workflow_dispatch:
+    inputs:
+      symbols:
+        description: "Comma-separated symbols (leave blank for full watchlist)"
+        required: false
+        default: ""
+      days_back:
+        description: "How many days back to scrape"
+        required: false
+        default: "2"
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write Google Drive credentials
+        # Secret stored as the full JSON content of your service account file
+        run: echo '${{ secrets.GDRIVE_CREDENTIALS_JSON }}' > credentials.json
+
+      - name: Run pipeline
+        env:
+          DEEPSEEK_API_KEY:       ${{ secrets.DEEPSEEK_API_KEY }}
+          GROQ_API_KEY:           ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY:         ${{ secrets.GEMINI_API_KEY }}
+          OPENROUTER_API_KEY:     ${{ secrets.OPENROUTER_API_KEY }}
+          ANTHROPIC_API_KEY:      ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          GOOGLE_DRIVE_CREDENTIALS_PATH: credentials.json
+        run: |
+          SYMBOLS="${{ github.event.inputs.symbols }}"
+          DAYS="${{ github.event.inputs.days_back || '2' }}"
+          if [ -n "$SYMBOLS" ]; then
+            python run_pipeline.py $(echo $SYMBOLS | tr ',' ' ')
+          else
+            python run_pipeline.py
+          fi
+
+      - name: Upload logs as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-logs-${{ github.run_id }}
+          path: logs/
+          retention-days: 7

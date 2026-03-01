@@ -1,0 +1,14 @@
+# Secrets — never commit these
+.env
+credentials.json
+trading_automation.json
+
+# Data files — stored in Google Drive, not git
+data/
+logs/
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
