@@ -603,6 +603,31 @@ with st.sidebar:
 # OVERVIEW DASHBOARD (no company selected)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+def _fix_creds_json(raw: str) -> str:
+    """
+    Re-escape literal newlines that appear inside JSON string values.
+    TOML triple-quoted secrets convert \\n → actual newline, which breaks
+    JSON parsing (control characters are not allowed in JSON strings).
+    """
+    try:
+        return json.dumps(json.loads(raw))   # already valid — just re-serialize
+    except json.JSONDecodeError:
+        pass
+    # Walk char-by-char; escape bare newlines/carriage-returns inside strings
+    fixed, in_str, prev = [], False, ""
+    for ch in raw:
+        if ch == '"' and prev != "\\":
+            in_str = not in_str
+        if in_str and ch == "\n":
+            fixed.append("\\n")
+        elif in_str and ch == "\r":
+            fixed.append("\\r")
+        else:
+            fixed.append(ch)
+        prev = ch
+    return json.dumps(json.loads("".join(fixed)))
+
+
 def _prepare_credentials() -> "str | None":
     """
     Return a path to a valid credentials JSON file.
@@ -620,7 +645,8 @@ def _prepare_credentials() -> "str | None":
         try:
             raw = st.secrets.get(key)
             if raw:
-                tmp.write_text(raw if isinstance(raw, str) else json.dumps(dict(raw)))
+                text = _fix_creds_json(raw) if isinstance(raw, str) else json.dumps(dict(raw))
+                tmp.write_text(text)
                 return str(tmp)
         except Exception:
             pass
