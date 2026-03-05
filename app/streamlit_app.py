@@ -451,7 +451,7 @@ def _safe_json(val, default):
         return default
 
 
-def _render_analysis(a: dict):
+def _render_analysis(a: dict, _key: str = ""):
     sentiment = a.get("sentiment", "neutral")
     score     = _safe_float(a.get("sentiment_score", 0))
     signal    = a.get("action_signal", "watch")
@@ -523,7 +523,7 @@ def _render_analysis(a: dict):
     ))
     fig.update_layout(height=180, paper_bgcolor="#161b22",
                       font_color="#e6edf3", margin=dict(l=10,r=10,t=30,b=5))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key=f"sentiment_gauge_{_key}")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -993,7 +993,7 @@ with tab_filings:
                             st.warning("PDF not available locally, on Drive, or via NSE URL.")
                     if analysis:
                         with st.expander(f"AI Analysis — {subject[:55]}", expanded=True):
-                            _render_analysis(analysis)
+                            _render_analysis(analysis, _key=filing_id)
                     elif analysis is not None:
                         st.error("AI analysis failed — all providers returned empty results. Check API keys.")
                 except Exception as _e:
@@ -1220,7 +1220,7 @@ with tab_ai:
                 dt_s  = str(row.get("broadcast_dt", ""))[:10]
                 label = f"{icon} {row.get('subject', '—')} — {dt_s}"
                 with st.expander(label[:80], expanded=False):
-                    _render_analysis(a)
+                    _render_analysis(a, _key=fid)
 
     # ── LIVE ANALYSIS MODE ────────────────────────────────────────
     else:
@@ -1280,7 +1280,7 @@ with tab_ai:
                                     if result:
                                         success_count += 1
                                         with st.expander(f"✅ {label[:60]}", expanded=True):
-                                            _render_analysis(result)
+                                            _render_analysis(result, _key=fid)
                                     else:
                                         st.error(f"AI analysis returned no result for: {label[:50]}")
                                 else:
