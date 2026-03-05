@@ -770,29 +770,62 @@ def ai_orderbook_reasoning(symbol: str, ob_df: pd.DataFrame, trends: dict) -> di
 # ─── Orderbook save/load ───────────────────────────────────────────
 
 def save_orderbook(symbol: str, ob_df: pd.DataFrame, trends: dict, reasoning: dict):
-    """Persist orderbook dataframe + analysis to disk."""
-    if not ob_df.empty:
-        ob_df.to_parquet(ORDERBOOK_DIR / f"{symbol}_orderbook.parquet", index=False)
-    full = {"trends": trends, "reasoning": reasoning, "generated_at": datetime.now().isoformat()}
-    (ORDERBOOK_DIR / f"{symbol}_analysis.json").write_text(json.dumps(full, indent=2, default=str))
-
-
-def load_orderbook(symbol: str) -> tuple[pd.DataFrame, dict, dict]:
-    """Load cached orderbook data for a symbol. Returns (ob_df, trends, reasoning)."""
+    """Persist orderbook dataframe + analysis to disk AND Google Drive."""
     pq_path = ORDERBOOK_DIR / f"{symbol}_orderbook.parquet"
     js_path = ORDERBOOK_DIR / f"{symbol}_analysis.json"
 
+    if not ob_df.empty:
+        ob_df.to_parquet(pq_path, index=False)
+    full = {"trends": trends, "reasoning": reasoning, "generated_at": datetime.now().isoformat()}
+    js_path.write_text(json.dumps(full, indent=2, default=str))
+
+    # Sync to Google Drive so data survives Streamlit Cloud reruns
+    try:
+        from storage.drive_handler import DriveHandler
+        dh = DriveHandler()
+        if not ob_df.empty:
+            dh.upload_parquet(pq_path, subfolder="orderbook")
+        dh.upload_json(js_path, subfolder="orderbook")
+        logger.info(f"Orderbook synced to Drive for {symbol}")
+    except Exception as e:
+        logger.warning(f"Drive sync failed for orderbook ({symbol}): {e}")
+
+
+def load_orderbook(symbol: str) -> tuple[pd.DataFrame, dict, dict]:
+    """Load cached orderbook data — local first, then Google Drive fallback."""
+    pq_path = ORDERBOOK_DIR / f"{symbol}_orderbook.parquet"
+    js_path = ORDERBOOK_DIR / f"{symbol}_analysis.json"
+
+    # Try Drive if local files missing (Streamlit Cloud ephemeral FS)
+    if not pq_path.exists() or not js_path.exists():
+        try:
+            from storage.drive_handler import DriveHandler
+            dh = DriveHandler()
+            if not pq_path.exists():
+                buf = dh.download_pdf_by_name(f"{symbol}_orderbook.parquet", subfolder="orderbook")
+                if buf:
+                    pq_path.write_bytes(buf.read())
+            if not js_path.exists():
+                buf = dh.download_pdf_by_name(f"{symbol}_analysis.json", subfolder="orderbook")
+                if buf:
+                    js_path.write_bytes(buf.read())
+        except Exception as e:
+            logger.warning(f"Drive load failed for orderbook ({symbol}): {e}")
+
     ob_df = pd.DataFrame()
     if pq_path.exists():
-        ob_df = pd.read_parquet(pq_path)
-        if "date" in ob_df.columns:
-            ob_df["date"] = pd.to_datetime(ob_df["date"], errors="coerce")
+        try:
+            ob_df = pd.read_parquet(pq_path)
+            if "date" in ob_df.columns:
+                ob_df["date"] = pd.to_datetime(ob_df["date"], errors="coerce")
+        except Exception:
+            pass
 
     trends, reasoning = {}, {}
     if js_path.exists():
         try:
             data = json.loads(js_path.read_text())
-            trends   = data.get("trends", {})
+            trends    = data.get("trends", {})
             reasoning = data.get("reasoning", {})
         except Exception:
             pass
