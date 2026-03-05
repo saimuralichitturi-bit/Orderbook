@@ -1307,558 +1307,229 @@ _ENERGY_COLORS = {
 
 with tab_ob:
     st.markdown("### 📦 Orderbook Intelligence")
-    st.caption(
-        "Extracts all contracts, PPAs, and order wins from every PDF — "
-        "clusters them by size & type — detects trends & momentum — "
-        "AI reasons about contract quality and investment implications."
-    )
 
+    from processors.sector_framework import (
+        get_sector, fetch_fundamentals, compute_framework,
+        SECTOR_LABELS, ALTERNATIVE_METRICS, ORDERBOOK_SECTORS, PARTIAL_SECTORS
+    )
     from processors.orderbook_engine import (
-        batch_extract_orderbook, detect_trends,
-        ai_orderbook_reasoning, save_orderbook, load_orderbook,
+        batch_extract_orderbook, save_orderbook, load_orderbook,
     )
 
-    # ── Load cached orderbook ──────────────────────────────────────
-    ob_df, cached_trends, cached_reasoning = load_orderbook(selected_symbol)
-    has_cache = not ob_df.empty
+    sector       = get_sector(selected_symbol)
+    sector_label = SECTOR_LABELS.get(sector, sector)
+    applicable   = sector in ORDERBOOK_SECTORS
+    partial      = sector in PARTIAL_SECTORS
 
-    col_run, col_rerun, col_clear, col_info = st.columns([2, 2, 1, 3])
+    # ── Sector badge ──────────────────────────────────────────────
+    badge_color = "#3fb950" if applicable else "#ffa726" if partial else "#8b949e"
+    st.markdown(
+        f'<span style="background:{badge_color};color:#0d1117;padding:3px 10px;'
+        f'border-radius:6px;font-size:12px;font-weight:700">{sector_label}</span>',
+        unsafe_allow_html=True,
+    )
+    st.markdown("")
+
+    # ── Not applicable — show what to use instead ─────────────────
+    if not applicable and not partial:
+        alt = ALTERNATIVE_METRICS.get(sector, "Sector-specific metrics")
+        st.warning(
+            f"**Orderbook framework does not apply to {sector_label} companies.**\n\n"
+            f"For {selected_symbol}, use: **{alt}**"
+        )
+        st.info(
+            "The Coverage Ratio and Market Cap % framework works for: "
+            "EPC, Infrastructure, Defence, Capital Goods, Shipbuilding, Manufacturing. "
+            f"{selected_symbol} is a {sector_label} company — "
+            "different fundamentals drive value here."
+        )
+        st.stop()
+
+    # ── Load / build orderbook ────────────────────────────────────
+    ob_df, _, _ = load_orderbook(selected_symbol)
+    has_cache   = not ob_df.empty
+
+    col_run, col_clear, col_info = st.columns([2, 1, 4])
     with col_run:
         run_ob = st.button(
             "▶ Build Orderbook" if not has_cache else "✅ Cached — Rebuild",
             type="primary" if not has_cache else "secondary",
-            help="Processes all PDFs for this company to extract contracts & orders",
-        )
-    with col_rerun:
-        run_reasoning = st.button(
-            "🤖 Refresh AI Analysis",
-            help="Re-runs the AI reasoning on existing orderbook data",
-            disabled=ob_df.empty,
         )
     with col_clear:
-        if st.button("🗑", help="Clear cached orderbook and start fresh"):
+        if st.button("🗑", help="Clear cache and rebuild"):
             from pathlib import Path
-            import shutil
             from config import DATA_DIR
-            ob_dir = DATA_DIR / "orderbook"
-            for f in ob_dir.glob(f"{selected_symbol}_*"):
+            for f in (DATA_DIR / "orderbook").glob(f"{selected_symbol}_*"):
                 f.unlink(missing_ok=True)
             st.session_state.pop("ob_processing", None)
             st.session_state.pop("ob_offset", None)
             st.session_state.pop("ob_symbol", None)
-            st.success("Cache cleared! Click ▶ Build Orderbook to rebuild.")
             st.rerun()
     with col_info:
         if has_cache:
-            st.caption(
-                f"Cached: {len(ob_df)} entries · "
-                f"{ob_df['date'].min().date() if ob_df['date'].notna().any() else '?'} → "
-                f"{ob_df['date'].max().date() if ob_df['date'].notna().any() else '?'}"
-            )
+            st.caption(f"Cached: {len(ob_df)} entries")
 
-    # ── Run extraction (auto-batched to avoid 60s Streamlit timeout) ───────────
-    # Session state tracks which PDF index we are at across reruns
-    OB_BATCH = 30  # process 30 PDFs per rerun (~45s, safely under timeout)
-
+    # ── Auto-batch extraction (30 PDFs/run to beat 60s timeout) ───
+    OB_BATCH = 30
     if run_ob:
-        # Reset progress counter on fresh button click
         st.session_state["ob_processing"] = True
         st.session_state["ob_offset"]     = 0
         st.session_state["ob_symbol"]     = selected_symbol
 
-    # Auto-continue if a batch run is in progress for this symbol
     if st.session_state.get("ob_processing") and st.session_state.get("ob_symbol") == selected_symbol:
-        offset = st.session_state.get("ob_offset", 0)
-        total  = len(df)
-        end    = min(offset + OB_BATCH, total)
+        offset   = st.session_state.get("ob_offset", 0)
+        total    = len(df)
+        end      = min(offset + OB_BATCH, total)
         batch_df = df.iloc[offset:end]
 
-        prog_bar = st.progress(
-            int(offset / max(total, 1) * 100),
-            text=f"Processing PDFs {offset+1}–{end} of {total}…"
-        )
-        status = st.empty()
+        prog = st.progress(int(offset / max(total,1) * 100),
+                           text=f"Processing PDFs {offset+1}–{end} of {total}…")
 
-        def _ob_progress(cur, tot, msg):
-            overall_pct = int((offset + cur) / max(total, 1) * 100)
-            prog_bar.progress(overall_pct, text=msg[:80])
-            status.caption(msg)
+        def _prog(cur, tot, msg):
+            prog.progress(int((offset+cur)/max(total,1)*100), text=msg[:80])
 
-        with st.spinner(f"Batch {offset+1}–{end} / {total} — extracting orderbook…"):
-            batch_ob = batch_extract_orderbook(selected_symbol, batch_df, _ob_progress)
+        with st.spinner(f"Extracting {offset+1}–{end} / {total}…"):
+            batch_ob = batch_extract_orderbook(selected_symbol, batch_df, _prog)
 
-        # Merge batch result with any already-extracted entries
         if not batch_ob.empty:
-            if not ob_df.empty:
-                ob_df = pd.concat([ob_df, batch_ob], ignore_index=True).drop_duplicates()
-            else:
-                ob_df = batch_ob
+            ob_df = pd.concat([ob_df, batch_ob], ignore_index=True).drop_duplicates() if not ob_df.empty else batch_ob
 
-        prog_bar.empty()
-        status.empty()
+        prog.empty()
 
         if end >= total:
-            # All PDFs processed — run AI reasoning and save
             st.session_state["ob_processing"] = False
-            if ob_df.empty:
-                st.warning("No orderbook data found in any PDF.")
-            else:
-                cached_trends    = detect_trends(ob_df)
-                cached_reasoning = ai_orderbook_reasoning(selected_symbol, ob_df, cached_trends)
-                save_orderbook(selected_symbol, ob_df, cached_trends, cached_reasoning)
-                st.success(f"✅ Fully extracted {len(ob_df)} orderbook entries from {total} PDFs!")
-                st.rerun()
-        else:
-            # More batches to go — save partial, advance offset, auto-rerun
-            st.session_state["ob_offset"] = end
             if not ob_df.empty:
-                # Save partial so progress survives any crash
-                ob_df.to_parquet(
-                    __import__("pathlib").Path(__file__).parent.parent / "data" / "orderbook" / f"{selected_symbol}_orderbook.parquet",
-                    index=False,
-                )
-            st.info(f"⏳ Batch done ({end}/{total} PDFs). Continuing automatically…")
+                save_orderbook(selected_symbol, ob_df, {}, {})
+                st.success(f"✅ Extracted {len(ob_df)} entries from {total} PDFs.")
+                st.rerun()
+            else:
+                st.warning("No orderbook entries found in PDFs.")
+        else:
+            st.session_state["ob_offset"] = end
+            st.info(f"⏳ {end}/{total} done — continuing…")
             st.rerun()
 
-    if run_reasoning and not ob_df.empty:
-        with st.spinner("Running AI reasoning on orderbook..."):
-            cached_trends    = detect_trends(ob_df)
-            cached_reasoning = ai_orderbook_reasoning(selected_symbol, ob_df, cached_trends)
-            save_orderbook(selected_symbol, ob_df, cached_trends, cached_reasoning)
-        st.success("AI analysis refreshed!")
-        st.rerun()
-
     if ob_df.empty:
-        st.info(
-            "Click **▶ Build Orderbook** to start. The engine will scan all available PDFs, "
-            "extract numbers with context, cluster by size/type, and reason about trends."
-        )
+        st.info("Click **▶ Build Orderbook** to extract order data from all PDFs.")
         st.stop()
 
-    trends   = cached_trends
-    reasoning = cached_reasoning
+    # ── Fetch fundamentals & compute framework ────────────────────
+    with st.spinner("Fetching live fundamentals (Revenue, MCap)…"):
+        fundamentals = fetch_fundamentals(selected_symbol)
 
-    # ── Summary metrics ───────────────────────────────────────────
-    st.markdown("---")
-    total_mw  = trends.get("total_mw", 0)
-    total_inr = trends.get("total_inr_cr", 0)
-    bull_pct  = round(trends.get("bullish_ratio", 0) * 100, 1)
-    traj      = trends.get("growth_trajectory", "—")
-    grade     = reasoning.get("investment_grade", "—")
-    score     = reasoning.get("order_quality_score", 0)
+    total_inr = float(ob_df["value_inr_cr"].dropna().sum()) if "value_inr_cr" in ob_df.columns else 0
+    fw = compute_framework(selected_symbol, total_inr, fundamentals)
 
-    # Show MW only if energy sector data exists; otherwise show deal count
-    has_mw_data = total_mw > 0
-    sm1, sm2, sm3, sm4, sm5 = st.columns(5)
-    for col, val, lbl in [
-        (sm1, f"{total_mw:,.0f} MW" if has_mw_data else f"{len(ob_df[ob_df['value_inr_cr'].notna()]) if 'value_inr_cr' in ob_df.columns else 0} Deals", "Total Capacity Won" if has_mw_data else "Deals Extracted"),
-        (sm2, f"₹{total_inr:,.0f} Cr",  "Total Contract Value"),
-        (sm3, f"{len(ob_df):,}",         "Order Entries"),
-        (sm4, f"{bull_pct}%",            "Bullish Signals"),
-        (sm5, f"{score}/100",            "Quality Score"),
-    ]:
-        col.markdown(
-            f'<div class="stat-card"><div class="val">{val}</div>'
-            f'<div class="lbl">{lbl}</div></div>',
-            unsafe_allow_html=True,
+    rev  = fundamentals.get("annual_revenue_cr", 0)
+    mcap = fundamentals.get("market_cap_cr", 0)
+
+    # ── Partial sector warning ────────────────────────────────────
+    if partial and not applicable:
+        st.warning(
+            f"⚠️ **Partial applicability** — {sector_label} companies have limited orderbook signals. "
+            f"Results below are indicative only."
         )
+        if sector == "conglomerate":
+            st.info("**Segment Rule:** Compare order value against SEGMENT revenue, not total company revenue. "
+                    "Then identify suppliers to that segment — those smaller companies re-rate.")
 
     st.markdown("---")
 
-    # ── AI Assessment Card ────────────────────────────────────────
-    if not reasoning:
-        st.warning("⚠️ AI reasoning not yet generated. Click **🤖 Refresh AI Analysis** to run it.")
-    if reasoning:
-        assess   = reasoning.get("overall_assessment", "neutral")
-        action   = reasoning.get("recommended_action", "hold")
-        a_color  = _OB_ASSESS_COLOR.get(assess, "#8b949e")
-        g_color  = _OB_GRADE_COLOR.get(grade, "#8b949e")
-        a_icon   = _OB_ACTION_ICON.get(action, "⏸")
+    # ── THE TWO FORMULAS ──────────────────────────────────────────
+    st.markdown("#### 📐 The Two Anchor Formulas")
 
+    f1, f2 = st.columns(2)
+
+    # Formula 1 — Coverage Ratio
+    with f1:
+        cov  = fw.get("coverage_ratio")
+        csig = fw.get("coverage_signal", "NO_DATA")
+        cclr = {"green": "#3fb950", "orange": "#ffa726", "red": "#f85149", "grey": "#8b949e"}.get(fw.get("coverage_color","grey"), "#8b949e")
         st.markdown(
-            f'<div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:20px 24px;margin-bottom:16px">'
-            f'<div style="display:flex;align-items:center;gap:16px;margin-bottom:12px">'
-            f'<span style="font-size:32px;font-weight:800;color:{g_color}">Grade {grade}</span>'
-            f'<span style="font-size:22px;font-weight:700;color:{a_color}">{assess.upper()}</span>'
-            f'<span style="font-size:18px;color:#e6edf3">{a_icon} {action.replace("_"," ").upper()}</span>'
-            f'<span style="color:#8b949e;font-size:12px;margin-left:auto">Trajectory: {traj.upper()}</span>'
-            f'</div>'
-            f'<p style="color:#e6edf3;margin:0 0 12px 0">{reasoning.get("executive_summary","")}</p>'
+            f'<div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:20px">'
+            f'<div style="color:#8b949e;font-size:12px;margin-bottom:6px">FORMULA 1 — Coverage Ratio</div>'
+            f'<div style="font-size:13px;color:#8b949e;margin-bottom:8px">Orderbook ÷ Annual Revenue</div>'
+            f'<div style="font-size:11px;color:#8b949e">₹{total_inr:,.0f} Cr ÷ ₹{rev:,.0f} Cr</div>'
+            f'<div style="font-size:36px;font-weight:800;color:{cclr};margin:8px 0">'
+            f'{"N/A" if cov is None else f"{cov:.2f}x"}</div>'
+            f'<div style="font-size:14px;font-weight:700;color:{cclr}">{csig}</div>'
+            f'<div style="font-size:11px;color:#8b949e;margin-top:8px">'
+            f'&lt;1x WEAK · 1-2x STABLE · 2-4x GOOD · 4-6x STRONG · &gt;6x INVESTIGATE</div>'
             f'</div>',
             unsafe_allow_html=True,
         )
 
-        # ── Framework Decision Tree ───────────────────────────
-        dt = reasoning.get("decision_tree", {})
-        if dt:
-            st.markdown("**📋 6-Point Framework Analysis**")
-            fw_rows = [
-                ("1. Coverage Ratio",    dt.get("step1_coverage",   "—")),
-                ("2. Market Cap Signal", dt.get("step2_market_signal","—")),
-                ("3. Execution",         dt.get("step3_execution",  "—")),
-                ("4. Client Quality",    dt.get("step4_client_quality","—")),
-                ("5. Inflow Rate",       dt.get("step5_inflow",     "—")),
-                ("6. Cash Quality",      dt.get("step6_cash",       "—")),
-            ]
-            for label, val in fw_rows:
-                color = "#3fb950" if any(x in str(val).lower() for x in ["pass","high","real","growing","feasible"])                        else "#f85149" if any(x in str(val).lower() for x in ["fail","trap","depleting","accounting"])                        else "#ffa726"
-                st.markdown(
-                    f'<div style="background:#161b22;border-left:3px solid {color};padding:6px 12px;margin:4px 0;border-radius:0 6px 6px 0">'
-                    f'<span style="color:#8b949e;font-size:12px">{label}</span><br>'
-                    f'<span style="color:#e6edf3;font-size:13px">{val}</span></div>',
-                    unsafe_allow_html=True,
-                )
-            st.markdown("")
+    # Formula 2 — Market Cap Coverage
+    with f2:
+        mcp  = fw.get("market_cap_pct")
+        msig = fw.get("market_signal", "NO_DATA")
+        mclr = {"green": "#3fb950", "orange": "#ffa726", "red": "#f85149", "grey": "#8b949e"}.get(fw.get("market_color","grey"), "#8b949e")
+        st.markdown(
+            f'<div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:20px">'
+            f'<div style="color:#8b949e;font-size:12px;margin-bottom:6px">FORMULA 2 — Market Cap Coverage</div>'
+            f'<div style="font-size:13px;color:#8b949e;margin-bottom:8px">Orderbook ÷ Market Cap × 100</div>'
+            f'<div style="font-size:11px;color:#8b949e">₹{total_inr:,.0f} Cr ÷ ₹{mcap:,.0f} Cr × 100</div>'
+            f'<div style="font-size:36px;font-weight:800;color:{mclr};margin:8px 0">'
+            f'{"N/A" if mcp is None else f"{mcp:.1f}%"}</div>'
+            f'<div style="font-size:14px;font-weight:700;color:{mclr}">{msig}</div>'
+            f'<div style="font-size:11px;color:#8b949e;margin-top:8px">'
+            f'&lt;10% NOISE · 10-30% MODERATE · 30-100% SIGNIFICANT · &gt;100% DEEP VALUE</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
-        if reasoning.get("verdict"):
-            st.success(f"**Verdict:** {reasoning['verdict']}")
+    st.markdown("")
 
-        r1, r2 = st.columns(2)
-        with r1:
-            strengths = reasoning.get("key_strengths", [])
-            concerns  = reasoning.get("key_concerns", [])
-            if strengths:
-                st.markdown("**✅ Strengths**")
-                for s in strengths: st.markdown(f"- {s}")
-            if concerns:
-                st.markdown("**⚠️ Concerns**")
-                for c in concerns: st.markdown(f"- {c}")
-        with r2:
-            cats  = reasoning.get("catalysts_to_watch", [])
-            risks = reasoning.get("risks", [])
-            if cats:
-                st.markdown("**⚡ Catalysts**")
-                for c in cats: st.markdown(f"🚀 {c}")
-            if risks:
-                st.markdown("**🔴 Risks**")
-                for r in risks: st.markdown(f"⚠️ {r}")
+    # ── VERDICT ───────────────────────────────────────────────────
+    verdict = fw.get("verdict", "")
+    verdict_map = {
+        "RE_RATING_CANDIDATE": ("#3fb950", "🚀 RE-RATING CANDIDATE", "Both checks pass — orderbook is large relative to revenue AND market cap hasn't priced it in. Stock re-rating likely."),
+        "WATCH_FOR_RE_RATING":  ("#ffa726", "👀 WATCH FOR RE-RATING",  "Market cap coverage is significant but coverage ratio needs improvement. Monitor order inflow rate."),
+        "HEALTHY_PIPELINE":     ("#58a6ff", "✅ HEALTHY PIPELINE",      "Strong coverage ratio — good revenue visibility. But market may already have priced this in."),
+        "NOISE_OR_WEAK":        ("#f85149", "❌ NOISE / WEAK",          "Orderbook is small relative to both revenue and market cap. Individual orders won't move the stock."),
+        "FRAMEWORK_NOT_APPLICABLE": ("#8b949e", "⚠️ N/A", ""),
+    }
+    v_color, v_label, v_text = verdict_map.get(verdict, ("#8b949e", verdict, ""))
+    if v_text:
+        st.markdown(
+            f'<div style="background:#161b22;border-left:4px solid {v_color};padding:14px 20px;border-radius:0 8px 8px 0;margin:8px 0">'
+            f'<div style="font-size:16px;font-weight:700;color:{v_color}">{v_label}</div>'
+            f'<div style="color:#e6edf3;font-size:13px;margin-top:4px">{v_text}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
-        if reasoning.get("12m_outlook"):
-            st.markdown("---")
-            st.info(f"**12-Month Outlook:** {reasoning['12m_outlook']}")
+    # ── Cash Conversion ───────────────────────────────────────────
+    ccr  = fw.get("cash_conversion_ratio")
+    csig = fw.get("cash_signal", "NO_DATA")
+    if ccr is not None:
+        cc_color = "#3fb950" if csig == "REAL" else "#ffa726" if csig == "MODERATE" else "#f85149"
+        st.markdown(
+            f'<div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px 16px;margin-top:8px">'
+            f'<span style="color:#8b949e;font-size:12px">Cash Conversion (OCF/EBITDA): </span>'
+            f'<span style="font-weight:700;color:{cc_color}">{ccr:.2f} → {csig}</span>'
+            f'<span style="color:#8b949e;font-size:11px"> · &gt;0.8=Real profits · &lt;0.5=Accounting only</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
     st.markdown("---")
 
-    # ── Chart 1: Cumulative Orderbook (Stacked Area by Energy Type) ──
-    monthly_mw = trends.get("monthly_mw", [])
-    if monthly_mw:
-        st.markdown("#### 📈 Cumulative Orderbook Buildup")
-        mw_frame = pd.DataFrame(monthly_mw)
-        mw_frame["month"] = pd.to_datetime(mw_frame["month"], errors="coerce")
+    # ── Raw extracted entries ─────────────────────────────────────
+    st.markdown(f"#### 📋 Extracted Order Entries ({len(ob_df)})")
+    st.caption("Raw data extracted from NSE filings PDFs. Values are AI-extracted — verify against official announcements.")
 
-        # Stacked area by energy type if available
-        energy_by_month = (
-            ob_df[ob_df["value_mw"].notna() & (ob_df["value_mw"] > 0)]
-            .assign(month=lambda d: d["date"].dt.to_period("M").dt.to_timestamp())
-            .groupby(["month", "energy_type"])["value_mw"]
-            .sum()
-            .reset_index()
-        )
-
-        fig_area = go.Figure()
-        if not energy_by_month.empty:
-            energy_by_month = energy_by_month.sort_values("month")
-            for etype in energy_by_month["energy_type"].unique():
-                sub = energy_by_month[energy_by_month["energy_type"] == etype]
-                # Cumulative within type
-                sub = sub.sort_values("month").copy()
-                sub["cumulative"] = sub["value_mw"].cumsum()
-                color = _ENERGY_COLORS.get(str(etype).lower(), "#8b949e")
-                fig_area.add_trace(go.Scatter(
-                    x=sub["month"], y=sub["cumulative"],
-                    name=str(etype).title(),
-                    mode="lines",
-                    stackgroup="one",
-                    fillcolor=color.replace("#", "rgba(") + ",0.6)" if color.startswith("#") else color,
-                    line=dict(color=color, width=1.5),
-                    hovertemplate="%{y:,.0f} MW<extra>%{fullData.name}</extra>",
-                ))
-        else:
-            # Fallback: total cumulative only
-            fig_area.add_trace(go.Scatter(
-                x=mw_frame["month"], y=mw_frame["cumulative_mw"],
-                name="Total MW",
-                mode="lines",
-                fill="tozeroy",
-                line=dict(color="#ffa726", width=2),
-            ))
-
-        # Anomaly markers
-        anomalies = trends.get("mw_anomalies", [])
-        if anomalies:
-            adf = pd.DataFrame(anomalies)
-            adf["month"] = pd.to_datetime(adf["month"], errors="coerce")
-            fig_area.add_trace(go.Scatter(
-                x=adf["month"], y=adf["mw_added"],
-                mode="markers",
-                name="Anomaly (spike)",
-                marker=dict(color="#f85149", size=12, symbol="star"),
-                hovertemplate="%{y:,.0f} MW spike<extra>Anomaly</extra>",
-            ))
-
-        fig_area.update_layout(
-            template="plotly_dark",
-            paper_bgcolor="#0e1117", plot_bgcolor="#161b22",
-            xaxis_title="Month", yaxis_title="Cumulative MW",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            hovermode="x unified", height=380,
-            title=dict(text=f"{selected_symbol} — Cumulative Orderbook by Energy Type",
-                       font=dict(color="#e6edf3")),
-        )
-        st.plotly_chart(fig_area, use_container_width=True)
-
-    # ── Chart 2: Monthly Order Wins Bar ───────────────────────────
-    if monthly_mw:
-        st.markdown("#### 📊 Monthly Order Win Volume")
-        mw_bar = pd.DataFrame(monthly_mw)
-        mw_bar["month"] = pd.to_datetime(mw_bar["month"], errors="coerce")
-
-        # Velocity as line overlay
-        vel_data = pd.DataFrame(trends.get("mw_velocity", []))
-
-        fig_bar = go.Figure()
-        fig_bar.add_trace(go.Bar(
-            x=mw_bar["month"], y=mw_bar["mw_added"],
-            name="MW Won",
-            marker_color="#ffa726",
-            hovertemplate="%{y:,.0f} MW<extra>Monthly Win</extra>",
-        ))
-        if not vel_data.empty and "velocity" in vel_data.columns:
-            vel_data["month"] = pd.to_datetime(vel_data["month"], errors="coerce")
-            fig_bar.add_trace(go.Scatter(
-                x=vel_data["month"], y=vel_data["velocity"],
-                name="Momentum (Δ MW)",
-                mode="lines+markers",
-                yaxis="y2",
-                line=dict(color="#58a6ff", width=2, dash="dot"),
-                marker=dict(size=5),
-            ))
-            fig_bar.update_layout(
-                yaxis2=dict(
-                    title="Momentum", overlaying="y", side="right",
-                    showgrid=False, tickfont=dict(color="#58a6ff"),
-                )
-            )
-
-        fig_bar.update_layout(
-            template="plotly_dark",
-            paper_bgcolor="#0e1117", plot_bgcolor="#161b22",
-            xaxis_title="Month", yaxis_title="MW Won",
-            barmode="group", height=320,
-            legend=dict(orientation="h"),
-        )
-        st.plotly_chart(fig_bar, use_container_width=True)
-
-    # ── Chart 3: INR Cr timeline ──────────────────────────────────
-    monthly_inr = trends.get("monthly_inr", [])
-    if monthly_inr:
-        inr_frame = pd.DataFrame(monthly_inr)
-        inr_frame["month"] = pd.to_datetime(inr_frame["month"], errors="coerce")
-        fig_inr = go.Figure()
-        fig_inr.add_trace(go.Bar(
-            x=inr_frame["month"], y=inr_frame["inr_cr_added"],
-            name="₹ Cr Won",
-            marker_color="#3fb950",
-            hovertemplate="₹%{y:,.0f} Cr<extra>Monthly</extra>",
-        ))
-        fig_inr.add_trace(go.Scatter(
-            x=inr_frame["month"], y=inr_frame["cumulative_inr_cr"],
-            name="Cumulative ₹ Cr",
-            mode="lines",
-            line=dict(color="#ffa726", width=2),
-            yaxis="y2",
-        ))
-        fig_inr.update_layout(
-            template="plotly_dark",
-            paper_bgcolor="#0e1117", plot_bgcolor="#161b22",
-            title="Monthly Contract Value (₹ Cr)",
-            xaxis_title="Month", yaxis_title="₹ Cr Won",
-            yaxis2=dict(title="Cumulative ₹ Cr", overlaying="y", side="right",
-                        showgrid=False, tickfont=dict(color="#ffa726")),
-            height=300, legend=dict(orientation="h"),
-        )
-        st.plotly_chart(fig_inr, use_container_width=True)
-
-    # ── Chart 4: Quarterly trend ──────────────────────────────────
-    quarterly_data = trends.get("quarterly", [])
-    if quarterly_data:
-        q_df = pd.DataFrame(quarterly_data)
-        fig_q = go.Figure()
-        fig_q.add_trace(go.Bar(
-            x=q_df["quarter"], y=q_df["count"],
-            name="Order Count",
-            marker_color=["#3fb950" if b > c / 2 else "#f85149"
-                          for b, c in zip(q_df.get("bullish", [0]*len(q_df)), q_df["count"])],
-            hovertemplate="%{y} orders<extra>%{x}</extra>",
-        ))
-        if "total_mw" in q_df.columns:
-            fig_q.add_trace(go.Scatter(
-                x=q_df["quarter"], y=q_df["total_mw"],
-                name="MW Trend",
-                mode="lines+markers",
-                yaxis="y2",
-                line=dict(color="#ffa726", width=2),
-            ))
-            fig_q.update_layout(
-                yaxis2=dict(title="MW", overlaying="y", side="right",
-                            showgrid=False, tickfont=dict(color="#ffa726"))
-            )
-        fig_q.update_layout(
-            template="plotly_dark",
-            paper_bgcolor="#0e1117", plot_bgcolor="#161b22",
-            title="Quarterly Order Activity (green = majority bullish)",
-            height=300, xaxis_title="Quarter",
-        )
-        st.plotly_chart(fig_q, use_container_width=True)
-
-    # ── Chart 5: K-Means Cluster Scatter ─────────────────────────
-    cluster_data = trends.get("clusters")
-    if cluster_data:
-        st.markdown("#### 🔬 Order Cluster Analysis (K-Means)")
-        sil = cluster_data[0].get("silhouette", 0) if cluster_data else 0
-        st.caption(
-            f"Silhouette score: {sil:.3f} — higher = better cluster separation · "
-            f"{len(cluster_data)} natural order clusters identified"
-        )
-
-        cl_rows = []
-        for c in cluster_data:
-            for entry in c.get("entries", []):
-                cl_rows.append({
-                    "label": c["label"],
-                    "entry": entry[:60],
-                    "avg_mw": c.get("avg_mw", 0) or 0,
-                    "avg_inr_cr": c.get("avg_inr_cr", 0) or 0,
-                    "bullish_pct": c.get("bullish_pct", 50),
-                    "count": c["count"],
-                })
-
-        if cl_rows:
-            cl_df = pd.DataFrame(cl_rows)
-            fig_cl = px.scatter(
-                cl_df,
-                x="avg_inr_cr", y="avg_mw",
-                color="label", size="count",
-                hover_data=["entry", "bullish_pct"],
-                title="Order Clusters — Size: order count · X: avg ₹ Cr · Y: avg MW",
-                template="plotly_dark",
-                color_discrete_sequence=["#ffa726", "#58a6ff", "#3fb950", "#f85149", "#d29922"],
-            )
-            fig_cl.update_layout(
-                paper_bgcolor="#0e1117", plot_bgcolor="#161b22",
-                xaxis_title="Avg Contract Value (₹ Cr)",
-                yaxis_title="Avg Capacity (MW)",
-                height=380,
-            )
-            st.plotly_chart(fig_cl, use_container_width=True)
-
-        # Cluster summary cards
-        ccols = st.columns(min(len(cluster_data), 4))
-        for i, c in enumerate(cluster_data[:4]):
-            g_col = "#3fb950" if c.get("bullish_pct", 50) >= 60 else "#f85149"
-            ccols[i].markdown(
-                f'<div class="stat-card">'
-                f'<div style="font-size:13px;color:#58a6ff;font-weight:700">{c["label"]}</div>'
-                f'<div style="color:#ffa726;font-size:18px;font-weight:800">{c["count"]} orders</div>'
-                f'<div style="color:#e6edf3;font-size:12px">⚡ {c.get("avg_mw","?") or "?"} MW avg</div>'
-                f'<div style="color:{g_col};font-size:12px">{c.get("bullish_pct","?")}% bullish</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-
-    st.markdown("---")
-
-    # ── Energy type breakdown ─────────────────────────────────────
-    energy_data = trends.get("energy_breakdown", [])
-    if energy_data:
-        e_df = pd.DataFrame(energy_data)
-        e_df = e_df[e_df["energy_type"].notna() & (e_df["energy_type"] != "")]
-        if not e_df.empty:
-            ec1, ec2 = st.columns(2)
-            with ec1:
-                fig_epie = px.pie(
-                    e_df, values="count", names="energy_type",
-                    title="Orders by Energy Type",
-                    template="plotly_dark",
-                    color="energy_type",
-                    color_discrete_map=_ENERGY_COLORS,
-                    hole=0.45,
-                )
-                fig_epie.update_layout(paper_bgcolor="#0e1117", height=300)
-                st.plotly_chart(fig_epie, use_container_width=True)
-            with ec2:
-                if "total_mw" in e_df.columns:
-                    fig_emw = px.bar(
-                        e_df.sort_values("total_mw", ascending=False),
-                        x="energy_type", y="total_mw",
-                        title="MW Won by Energy Type",
-                        template="plotly_dark",
-                        color="energy_type",
-                        color_discrete_map=_ENERGY_COLORS,
-                    )
-                    fig_emw.update_layout(
-                        paper_bgcolor="#0e1117", plot_bgcolor="#161b22",
-                        showlegend=False, height=300,
-                    )
-                    st.plotly_chart(fig_emw, use_container_width=True)
-
-    st.markdown("---")
-
-    # ── Individual Orders Table ───────────────────────────────────
-    st.markdown("#### 📋 All Extracted Orders")
-    ob_filter_type = st.multiselect(
-        "Filter by type",
-        ob_df["type"].dropna().unique().tolist(),
-        default=[],
-        key="ob_type_filter",
-    )
-    ob_filter_positive = st.toggle("Show only bullish signals", value=False, key="ob_bull")
-
-    display_ob = ob_df.copy()
-    if ob_filter_type:
-        display_ob = display_ob[display_ob["type"].isin(ob_filter_type)]
-    if ob_filter_positive:
-        display_ob = display_ob[display_ob["is_positive"]]
-
-    display_ob = display_ob.sort_values("date", ascending=False)
-    st.caption(f"Showing {len(display_ob)} entries")
-
-    for _, row in display_ob.head(80).iterrows():
-        is_pos = bool(row.get("is_positive", True))
-        icon   = "🟢" if is_pos else "🔴"
-        etype  = str(row.get("energy_type", "")).title()
-        ctype  = str(row.get("contract_type", "")).upper()
-        val_str = (
-            f"{row['value_numeric']:,.0f} {row['value_unit']}"
-            if pd.notna(row.get("value_numeric")) else "—"
-        )
-        inr_str = f" · ₹{row['value_inr_cr']:,.0f} Cr" if pd.notna(row.get("value_inr_cr")) else ""
-        mw_str  = f" · {row['value_mw']:,.0f} MW" if pd.notna(row.get("value_mw")) else ""
-
-        with st.container(border=True):
-            lc, rc = st.columns([5, 2])
-            with lc:
-                type_pill = (
-                    f'<span style="background:#21262d;color:#79c0ff;padding:1px 8px;'
-                    f'border-radius:8px;font-size:11px;margin-right:6px">{row["type"].replace("_"," ").title()}</span>'
-                )
-                st.markdown(
-                    f'{icon} {type_pill}'
-                    f'<span style="color:#e6edf3;font-weight:600">{str(row.get("description",""))[:80]}</span>',
-                    unsafe_allow_html=True,
-                )
-                if row.get("reasoning"):
-                    st.caption(f"💡 {row['reasoning']}")
-            with rc:
-                st.caption(f"📅 {str(row.get('date',''))[:10]}")
-                st.caption(f"📊 {val_str}{mw_str}{inr_str}")
-                if row.get("counterparty"):
-                    st.caption(f"🤝 {row['counterparty']}")
-                if etype and etype not in ["", "None", "Nan"]:
-                    st.caption(f"⚡ {etype}" + (f" · {ctype}" if ctype and ctype != "NONE" else ""))
+    show_df = ob_df.copy()
+    display_cols = [c for c in ["date","description","value_numeric","value_unit","value_inr_cr","counterparty","is_positive","confidence"] if c in show_df.columns]
+    if "value_inr_cr" in show_df.columns:
+        show_df["value_inr_cr"] = show_df["value_inr_cr"].apply(lambda x: f"₹{x:,.0f} Cr" if pd.notna(x) and x > 0 else "—")
+    if "confidence" in show_df.columns:
+        show_df["confidence"] = show_df["confidence"].apply(lambda x: f"{x:.0%}" if pd.notna(x) else "—")
+    st.dataframe(show_df[display_cols].sort_values("date", ascending=False) if "date" in show_df.columns else show_df[display_cols],
+                 use_container_width=True, hide_index=True)
 
 
-# ──────────────────────────────────────────────────────────────────
+
 # TAB 5 — CHAT  (multi-agent, batch-processed, memory-backed)
 # ──────────────────────────────────────────────────────────────────
 
