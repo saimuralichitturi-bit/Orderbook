@@ -1434,9 +1434,11 @@ with tab_ob:
     grade     = reasoning.get("investment_grade", "—")
     score     = reasoning.get("order_quality_score", 0)
 
+    # Show MW only if energy sector data exists; otherwise show deal count
+    has_mw_data = total_mw > 0
     sm1, sm2, sm3, sm4, sm5 = st.columns(5)
     for col, val, lbl in [
-        (sm1, f"{total_mw:,.0f} MW",    "Total Capacity Won"),
+        (sm1, f"{total_mw:,.0f} MW" if has_mw_data else f"{len(ob_df[ob_df['value_inr_cr'].notna()]) if 'value_inr_cr' in ob_df.columns else 0} Deals", "Total Capacity Won" if has_mw_data else "Deals Extracted"),
         (sm2, f"₹{total_inr:,.0f} Cr",  "Total Contract Value"),
         (sm3, f"{len(ob_df):,}",         "Order Entries"),
         (sm4, f"{bull_pct}%",            "Bullish Signals"),

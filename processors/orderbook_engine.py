@@ -57,7 +57,11 @@ _DURATION_RE = re.compile(
 _ORDERBOOK_KEYWORDS = re.compile(
     r"\b(ppa|order|contract|capacity|expansion|supply|tender|bid|win|"
     r"commission|award|agreement|mou|epc|power purchase|megawatt|gigawatt|"
-    r"thermal|solar|wind|hydro|gas|acquisition|joint venture|alliance)\b",
+    r"thermal|solar|wind|hydro|gas|acquisition|joint venture|alliance|"
+    r"deal|engagement|mandate|revenue|backlog|pipeline|renewal|ramp|"
+    r"total contract value|tcv|acv|digital transformation|outsourc|"
+    r"it services|bpo|consulting|implementation|platform|cloud|"
+    r"billion|million|crore|usd|inr)\b",
     re.IGNORECASE,
 )
 
@@ -116,38 +120,46 @@ PDF Content (key excerpts):
 
 Pre-detected numbers by regex: {regex_hits}
 
-Extract ALL entries representing business orders, contracts, capacity additions, PPAs, supply agreements, or significant financial commitments.
+Extract ALL entries representing business orders, contracts, deals, wins, capacity additions, PPAs, supply agreements, IT contracts, service agreements, acquisitions, or significant financial commitments.
+
+This company may be in ANY sector — energy, IT/software, banking, manufacturing, pharma, etc.
+- Energy companies: extract MW/GW capacity, PPA values, EPC contracts
+- IT/software companies (TCS, Infosys, Wipro): extract deal wins, client contracts, $ or ₹ TCV (total contract value), headcount-related numbers
+- Banks/NBFC: loan book numbers, NPA figures, AUM
+- Manufacturing: order backlog, supply contracts, capacity expansion (units/tonnes)
+- Any sector: acquisitions, JVs, penalties, regulatory outcomes
 
 Rules:
-- Include EVERY MW/GW figure, every ₹ Cr / USD Mn contract value
-- If the same contract appears in different units (e.g. 558 MW and ₹2800 Cr), create ONE entry with both
-- Compliance filings may have penalty amounts or settlement figures — include them with type="compliance"
-- Board meeting outcomes may reference contracts — extract those too
-- For PPA: duration is usually 25 years if not stated
+- Include EVERY contract value (MW, ₹ Cr, USD Mn, USD Bn, units, tonnes, etc.)
+- For IT deals: USD Bn/Mn contract wins are the key metric — convert to INR Cr (1 USD = 85 INR)
+- If the same deal appears in multiple units, create ONE entry with both
+- Compliance/penalty amounts count as entries (type="compliance")
+- Board meeting outcomes referencing contracts → extract those too
 
 Return ONLY this JSON (no markdown, no explanation):
 {{
   "has_orderbook_data": true,
   "entries": [
     {{
-      "type": "order_win|ppa|epc|supply|capacity_addition|financial|compliance|other",
-      "description": "concise 1-line description",
-      "value_numeric": <primary number, e.g. 558>,
-      "value_unit": "MW|GW|INR_Cr|USD_Mn|units|%|other",
-      "value_inr_cr": <estimated INR crore value or null>,
-      "value_mw": <capacity in MW or null>,
-      "counterparty": "name or null",
-      "project_location": "state or city or null",
-      "duration_years": <years or null>,
+      "type": "order_win|ppa|epc|supply|capacity_addition|it_deal|acquisition|financial|compliance|other",
+      "description": "concise 1-line description of the deal/order",
+      "value_numeric": <primary number>,
+      "value_unit": "MW|GW|INR_Cr|USD_Mn|USD_Bn|USD|units|tonnes|%|other",
+      "value_inr_cr": <estimated INR crore equivalent or null>,
+      "value_mw": <capacity in MW if energy sector, else null>,
+      "counterparty": "client or partner name or null",
+      "project_location": "country/state/city or null",
+      "duration_years": <contract duration in years or null>,
+      "sector": "energy|it_services|banking|manufacturing|pharma|telecom|other",
       "energy_type": "thermal|solar|wind|hydro|gas|oil|mixed|null",
-      "contract_type": "PPA|EPC|O&M|supply|loan|equity|penalty|other|null",
+      "contract_type": "PPA|EPC|O&M|IT_services|BPO|consulting|supply|loan|equity|penalty|acquisition|other|null",
       "is_positive_signal": true,
-      "reasoning": "1-2 sentence: why this matters for investors",
+      "reasoning": "1-2 sentences: why this matters for investors",
       "confidence": 0.85
     }}
   ],
-  "total_mw_this_filing": <null or total MW sum>,
-  "total_inr_cr_this_filing": <null or total INR Cr sum>
+  "total_mw_this_filing": <null or total MW sum (energy only)>,
+  "total_inr_cr_this_filing": <null or total INR Cr equivalent sum>
 }}
 
 If no orderbook data found, return: {{"has_orderbook_data": false, "entries": []}}"""
