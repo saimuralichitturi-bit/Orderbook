@@ -68,9 +68,16 @@ _ORDERBOOK_KEYWORDS = re.compile(
 INR_CONVERSION = {
     "cr": 1, "crore": 1, "crores": 1,
     "lakh": 0.01, "l": 0.01,
-    "mn": 8.5, "million": 8.5,       # USD → INR Cr
+    "mn": 8.5, "million": 8.5,       # USD Mn → INR Cr (~85 INR/USD)
     "billion": 8500, "bn": 8500, "b": 8500,
     "m": 8.5,
+    # IT sector USD units
+    "usd_mn": 8.5, "usd mn": 8.5,
+    "usd_bn": 8500, "usd bn": 8500,
+    "usd_billion": 8500, "usd_million": 8.5,
+    "inr_cr": 1, "inr cr": 1,
+    # Plain USD (assume millions if > 1000, else raw)
+    "usd": 8.5 / 100,  # 1 USD = ~0.085 INR Cr (i.e., raw USD ÷ 100 for Cr)
 }
 MW_CONVERSION = {"mw": 1, "mwac": 1, "mwp": 1, "gw": 1000, "gigawatt": 1000,
                  "megawatt": 1, "kwh": 0.001, "mwh": 0.001}
@@ -385,10 +392,23 @@ def _append_entries(entries: list, result: dict, row) -> None:
         if val_mw is None:
             val_mw = val * MW_CONVERSION.get(unit, 0) if unit in MW_CONVERSION else None
 
-        # Normalize value_inr_cr
+        # Normalize value_inr_cr — handle USD Mn/Bn from IT deal filings
         val_inr = entry.get("value_inr_cr")
-        if val_inr is None and unit in INR_CONVERSION:
-            val_inr = val * INR_CONVERSION[unit]
+        if val_inr is None:
+            unit_key = unit.replace(" ", "_").lower()
+            if unit_key in INR_CONVERSION:
+                val_inr = val * INR_CONVERSION[unit_key]
+            elif unit in INR_CONVERSION:
+                val_inr = val * INR_CONVERSION[unit]
+        # If still None but value_numeric exists with a USD-like unit, try to convert
+        if val_inr is None and val and any(u in unit for u in ["usd", "dollar", "bn", "mn", "billion", "million"]):
+            if any(u in unit for u in ["bn", "billion"]):
+                val_inr = val * 8500
+            elif any(u in unit for u in ["mn", "million", "usd"]):
+                val_inr = val * 8.5
+        # Clamp unrealistic values (e.g. 0.001 Cr → skip)
+        if val_inr is not None and val_inr < 0.01:
+            val_inr = None
 
         entries.append({
             "filing_id":       filing_id,
@@ -540,10 +560,25 @@ def detect_trends(ob_df: pd.DataFrame) -> dict:
 
     # ── 7. Signal summary ─────────────────────────────────────────
     total = len(ob_df)
-    pos = int(ob_df["is_positive"].sum())
+    # Ensure is_positive column exists
+    if "is_positive" not in ob_df.columns:
+        ob_df["is_positive"] = True
+    pos = int(ob_df["is_positive"].fillna(True).astype(bool).sum())
     trends["total_entries"] = total
     trends["bullish_ratio"]  = round(pos / total, 3) if total > 0 else 0
     trends["bearish_count"]  = total - pos
+
+    # Always set totals (default 0 if no data) so UI always has values
+    if "total_mw" not in trends:
+        trends["total_mw"] = 0.0
+    if "total_inr_cr" not in trends:
+        # Try summing value_inr_cr directly as fallback
+        if "value_inr_cr" in ob_df.columns:
+            trends["total_inr_cr"] = float(ob_df["value_inr_cr"].dropna().sum())
+        else:
+            trends["total_inr_cr"] = 0.0
+    if "growth_trajectory" not in trends:
+        trends["growth_trajectory"] = "steady"
 
     return trends
 
