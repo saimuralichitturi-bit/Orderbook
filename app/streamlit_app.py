@@ -1343,32 +1343,68 @@ with tab_ob:
                 f"{ob_df['date'].max().date() if ob_df['date'].notna().any() else '?'}"
             )
 
-    # ── Run extraction ────────────────────────────────────────────
+    # ── Run extraction (auto-batched to avoid 60s Streamlit timeout) ───────────
+    # Session state tracks which PDF index we are at across reruns
+    OB_BATCH = 30  # process 30 PDFs per rerun (~45s, safely under timeout)
+
     if run_ob:
-        prog_bar = st.progress(0, text="Initialising...")
-        status   = st.empty()
+        # Reset progress counter on fresh button click
+        st.session_state["ob_processing"] = True
+        st.session_state["ob_offset"]     = 0
+        st.session_state["ob_symbol"]     = selected_symbol
+
+    # Auto-continue if a batch run is in progress for this symbol
+    if st.session_state.get("ob_processing") and st.session_state.get("ob_symbol") == selected_symbol:
+        offset = st.session_state.get("ob_offset", 0)
+        total  = len(df)
+        end    = min(offset + OB_BATCH, total)
+        batch_df = df.iloc[offset:end]
+
+        prog_bar = st.progress(
+            int(offset / max(total, 1) * 100),
+            text=f"Processing PDFs {offset+1}–{end} of {total}…"
+        )
+        status = st.empty()
 
         def _ob_progress(cur, tot, msg):
-            pct = int(cur / max(tot, 1) * 100)
-            prog_bar.progress(pct, text=msg[:80])
+            overall_pct = int((offset + cur) / max(total, 1) * 100)
+            prog_bar.progress(overall_pct, text=msg[:80])
             status.caption(msg)
 
-        with st.spinner("Extracting orderbook from all PDFs..."):
-            ob_df = batch_extract_orderbook(selected_symbol, df, _ob_progress)
+        with st.spinner(f"Batch {offset+1}–{end} / {total} — extracting orderbook…"):
+            batch_ob = batch_extract_orderbook(selected_symbol, batch_df, _ob_progress)
+
+        # Merge batch result with any already-extracted entries
+        if not batch_ob.empty:
+            if not ob_df.empty:
+                ob_df = pd.concat([ob_df, batch_ob], ignore_index=True).drop_duplicates()
+            else:
+                ob_df = batch_ob
 
         prog_bar.empty()
         status.empty()
 
-        if ob_df.empty:
-            st.warning(
-                "No orderbook data found. Ensure PDFs are downloaded "
-                "(click 🤖 Analyze on filings or run the pipeline)."
-            )
+        if end >= total:
+            # All PDFs processed — run AI reasoning and save
+            st.session_state["ob_processing"] = False
+            if ob_df.empty:
+                st.warning("No orderbook data found in any PDF.")
+            else:
+                cached_trends    = detect_trends(ob_df)
+                cached_reasoning = ai_orderbook_reasoning(selected_symbol, ob_df, cached_trends)
+                save_orderbook(selected_symbol, ob_df, cached_trends, cached_reasoning)
+                st.success(f"✅ Fully extracted {len(ob_df)} orderbook entries from {total} PDFs!")
+                st.rerun()
         else:
-            cached_trends   = detect_trends(ob_df)
-            cached_reasoning = ai_orderbook_reasoning(selected_symbol, ob_df, cached_trends)
-            save_orderbook(selected_symbol, ob_df, cached_trends, cached_reasoning)
-            st.success(f"✅ Extracted {len(ob_df)} orderbook entries from PDFs!")
+            # More batches to go — save partial, advance offset, auto-rerun
+            st.session_state["ob_offset"] = end
+            if not ob_df.empty:
+                # Save partial so progress survives any crash
+                ob_df.to_parquet(
+                    __import__("pathlib").Path(__file__).parent.parent / "data" / "orderbook" / f"{selected_symbol}_orderbook.parquet",
+                    index=False,
+                )
+            st.info(f"⏳ Batch done ({end}/{total} PDFs). Continuing automatically…")
             st.rerun()
 
     if run_reasoning and not ob_df.empty:
