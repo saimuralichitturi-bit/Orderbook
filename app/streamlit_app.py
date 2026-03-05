@@ -1322,7 +1322,7 @@ with tab_ob:
     ob_df, cached_trends, cached_reasoning = load_orderbook(selected_symbol)
     has_cache = not ob_df.empty
 
-    col_run, col_rerun, col_info = st.columns([2, 2, 4])
+    col_run, col_rerun, col_clear, col_info = st.columns([2, 2, 1, 3])
     with col_run:
         run_ob = st.button(
             "▶ Build Orderbook" if not has_cache else "✅ Cached — Rebuild",
@@ -1335,6 +1335,19 @@ with tab_ob:
             help="Re-runs the AI reasoning on existing orderbook data",
             disabled=ob_df.empty,
         )
+    with col_clear:
+        if st.button("🗑", help="Clear cached orderbook and start fresh"):
+            from pathlib import Path
+            import shutil
+            from config import DATA_DIR
+            ob_dir = DATA_DIR / "orderbook"
+            for f in ob_dir.glob(f"{selected_symbol}_*"):
+                f.unlink(missing_ok=True)
+            st.session_state.pop("ob_processing", None)
+            st.session_state.pop("ob_offset", None)
+            st.session_state.pop("ob_symbol", None)
+            st.success("Cache cleared! Click ▶ Build Orderbook to rebuild.")
+            st.rerun()
     with col_info:
         if has_cache:
             st.caption(
