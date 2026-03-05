@@ -1488,31 +1488,54 @@ with tab_ob:
             unsafe_allow_html=True,
         )
 
+        # ── Framework Decision Tree ───────────────────────────
+        dt = reasoning.get("decision_tree", {})
+        if dt:
+            st.markdown("**📋 6-Point Framework Analysis**")
+            fw_rows = [
+                ("1. Coverage Ratio",    dt.get("step1_coverage",   "—")),
+                ("2. Market Cap Signal", dt.get("step2_market_signal","—")),
+                ("3. Execution",         dt.get("step3_execution",  "—")),
+                ("4. Client Quality",    dt.get("step4_client_quality","—")),
+                ("5. Inflow Rate",       dt.get("step5_inflow",     "—")),
+                ("6. Cash Quality",      dt.get("step6_cash",       "—")),
+            ]
+            for label, val in fw_rows:
+                color = "#3fb950" if any(x in str(val).lower() for x in ["pass","high","real","growing","feasible"])                        else "#f85149" if any(x in str(val).lower() for x in ["fail","trap","depleting","accounting"])                        else "#ffa726"
+                st.markdown(
+                    f'<div style="background:#161b22;border-left:3px solid {color};padding:6px 12px;margin:4px 0;border-radius:0 6px 6px 0">'
+                    f'<span style="color:#8b949e;font-size:12px">{label}</span><br>'
+                    f'<span style="color:#e6edf3;font-size:13px">{val}</span></div>',
+                    unsafe_allow_html=True,
+                )
+            st.markdown("")
+
+        if reasoning.get("verdict"):
+            st.success(f"**Verdict:** {reasoning['verdict']}")
+
         r1, r2 = st.columns(2)
         with r1:
-            st.markdown("**🔗 Reasoning Chain**")
-            for step in reasoning.get("reasoning_chain", []):
-                st.markdown(f"> {step}")
-        with r2:
             strengths = reasoning.get("key_strengths", [])
             concerns  = reasoning.get("key_concerns", [])
-            cats      = reasoning.get("catalysts_to_watch", [])
             if strengths:
                 st.markdown("**✅ Strengths**")
                 for s in strengths: st.markdown(f"- {s}")
             if concerns:
                 st.markdown("**⚠️ Concerns**")
                 for c in concerns: st.markdown(f"- {c}")
+        with r2:
+            cats  = reasoning.get("catalysts_to_watch", [])
+            risks = reasoning.get("risks", [])
             if cats:
-                st.markdown("**⚡ Catalysts to Watch**")
+                st.markdown("**⚡ Catalysts**")
                 for c in cats: st.markdown(f"🚀 {c}")
+            if risks:
+                st.markdown("**🔴 Risks**")
+                for r in risks: st.markdown(f"⚠️ {r}")
 
-        if reasoning.get("12m_outlook") or reasoning.get("sector_context"):
+        if reasoning.get("12m_outlook"):
             st.markdown("---")
-            if reasoning.get("12m_outlook"):
-                st.info(f"**12-Month Outlook:** {reasoning['12m_outlook']}")
-            if reasoning.get("sector_context"):
-                st.caption(f"🏭 Sector Context: {reasoning['sector_context']}")
+            st.info(f"**12-Month Outlook:** {reasoning['12m_outlook']}")
 
     st.markdown("---")
 

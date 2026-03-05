@@ -678,104 +678,265 @@ def _df_to_records(df: pd.DataFrame) -> list[dict]:
     return records
 
 
+# ─── Financial Framework (Sai's Order Book Framework) ────────────
+
+def compute_orderbook_metrics(ob_df: pd.DataFrame, fundamentals: dict) -> dict:
+    """
+    Apply the 6-point financial framework to score the orderbook.
+    fundamentals = {annual_revenue_cr, market_cap_cr, annual_capacity_cr, ocf_cr, ebitda_cr}
+    """
+    metrics = {}
+    total_inr = ob_df["value_inr_cr"].dropna().sum() if "value_inr_cr" in ob_df.columns else 0
+    rev  = fundamentals.get("annual_revenue_cr", 0)
+    mcap = fundamentals.get("market_cap_cr", 0)
+    cap  = fundamentals.get("annual_capacity_cr", rev * 1.2)  # default: 120% of revenue
+    ocf  = fundamentals.get("ocf_cr", 0)
+    ebitda = fundamentals.get("ebitda_cr", 0)
+
+    # ── 1. Coverage Ratio (Order Book / Revenue) ──────────────────
+    if rev > 0 and total_inr > 0:
+        cov = total_inr / rev
+        metrics["coverage_ratio"] = round(cov, 2)
+        if cov < 1:   metrics["coverage_signal"] = "WEAK"
+        elif cov < 2: metrics["coverage_signal"] = "STABLE"
+        elif cov < 4: metrics["coverage_signal"] = "GOOD"
+        elif cov < 6: metrics["coverage_signal"] = "STRONG"
+        else:         metrics["coverage_signal"] = "INVESTIGATE"
+    else:
+        metrics["coverage_ratio"] = None
+        metrics["coverage_signal"] = "NO_DATA"
+
+    # ── 2. Market Cap Coverage % ──────────────────────────────────
+    if mcap > 0 and total_inr > 0:
+        mcp = (total_inr / mcap) * 100
+        metrics["market_cap_coverage_pct"] = round(mcp, 1)
+        if mcp > 100:  metrics["market_signal"] = "DEEP_VALUE"
+        elif mcp > 30: metrics["market_signal"] = "SIGNIFICANT"
+        elif mcp > 10: metrics["market_signal"] = "MODERATE"
+        else:          metrics["market_signal"] = "NOISE"
+    else:
+        metrics["market_cap_coverage_pct"] = None
+        metrics["market_signal"] = "NO_DATA"
+
+    # ── 3. Execution Feasibility (years to deliver) ───────────────
+    if cap > 0 and total_inr > 0:
+        exec_years = total_inr / cap
+        metrics["execution_years"] = round(exec_years, 1)
+        if exec_years > 7:   metrics["execution_signal"] = "TRAP"
+        elif exec_years > 4: metrics["execution_signal"] = "STRETCHED"
+        else:                metrics["execution_signal"] = "FEASIBLE"
+    else:
+        metrics["execution_years"] = None
+        metrics["execution_signal"] = "NO_DATA"
+
+    # ── 4. Client Quality ─────────────────────────────────────────
+    if "contract_type" in ob_df.columns or "counterparty" in ob_df.columns:
+        gov_keywords = ["govt","government","eesl","ntpc","nhpc","ircon","nhai",
+                        "ministry","state","defence","bel","hal","drdo","railways",
+                        "municipal","corporation","authority"]
+        def is_gov(row):
+            txt = (str(row.get("counterparty","")) + str(row.get("contract_type",""))).lower()
+            return any(k in txt for k in gov_keywords)
+        gov_count = sum(1 for _, r in ob_df.iterrows() if is_gov(r))
+        metrics["govt_client_pct"] = round(gov_count / max(len(ob_df), 1) * 100, 1)
+        if metrics["govt_client_pct"] > 50: metrics["client_quality"] = "HIGH"
+        elif metrics["govt_client_pct"] > 20: metrics["client_quality"] = "MODERATE"
+        else: metrics["client_quality"] = "LOW"
+    else:
+        metrics["govt_client_pct"] = None
+        metrics["client_quality"] = "UNKNOWN"
+
+    # ── 5. Inflow Rate (new orders vs revenue) ────────────────────
+    # Use last 4 quarters of orders vs TTM revenue
+    if rev > 0 and "date" in ob_df.columns:
+        recent_cutoff = pd.Timestamp.now() - pd.DateOffset(years=1)
+        recent_inr = ob_df[ob_df["date"] >= recent_cutoff]["value_inr_cr"].dropna().sum()
+        inflow_rate = recent_inr / rev if rev > 0 else 0
+        metrics["inflow_rate"] = round(inflow_rate, 2)
+        if inflow_rate > 1.2:   metrics["inflow_signal"] = "GROWING"
+        elif inflow_rate >= 0.8: metrics["inflow_signal"] = "STABLE"
+        else:                    metrics["inflow_signal"] = "DEPLETING"
+    else:
+        metrics["inflow_rate"] = None
+        metrics["inflow_signal"] = "NO_DATA"
+
+    # ── 6. Cash Flow Quality (OCF / EBITDA) ──────────────────────
+    if ocf > 0 and ebitda > 0:
+        ccr = ocf / ebitda
+        metrics["cash_conversion_ratio"] = round(ccr, 2)
+        if ccr >= 0.8:   metrics["cash_signal"] = "REAL_VALUE"
+        elif ccr >= 0.5: metrics["cash_signal"] = "MODERATE"
+        else:            metrics["cash_signal"] = "ACCOUNTING_PROFIT_ONLY"
+    else:
+        metrics["cash_conversion_ratio"] = None
+        metrics["cash_signal"] = "NO_DATA"
+
+    # ── Overall Score (weighted) ──────────────────────────────────
+    score = 0
+    weights = {
+        "coverage": ({"STRONG":30,"GOOD":25,"STABLE":15,"WEAK":5,"INVESTIGATE":10,"NO_DATA":0},
+                     metrics.get("coverage_signal","NO_DATA")),
+        "market":   ({"DEEP_VALUE":25,"SIGNIFICANT":20,"MODERATE":10,"NOISE":0,"NO_DATA":0},
+                     metrics.get("market_signal","NO_DATA")),
+        "exec":     ({"FEASIBLE":20,"STRETCHED":10,"TRAP":0,"NO_DATA":10},
+                     metrics.get("execution_signal","NO_DATA")),
+        "client":   ({"HIGH":15,"MODERATE":10,"LOW":5,"UNKNOWN":5},
+                     metrics.get("client_quality","UNKNOWN")),
+        "cash":     ({"REAL_VALUE":10,"MODERATE":5,"ACCOUNTING_PROFIT_ONLY":0,"NO_DATA":5},
+                     metrics.get("cash_signal","NO_DATA")),
+    }
+    for _, (scale, val) in weights.items():
+        score += scale.get(val, 0)
+    metrics["framework_score"] = min(score, 100)
+
+    return metrics
+
+
 # ─── AI Reasoning ─────────────────────────────────────────────────
 
-_REASONING_PROMPT = """You are a senior equity analyst covering Indian listed companies across ALL sectors — energy, IT services, banking, manufacturing, pharma, telecom, and conglomerates.
+_REASONING_PROMPT = """You are a senior equity analyst for an Indian hedge fund. You use a strict financial framework to evaluate order books.
 
 Company: {symbol}
-Orderbook & Deal Intelligence Report:
 
-Total Orders/Deals Analyzed: {total_entries}
-Total Capacity Won (energy only): {total_mw} MW
-Total Contract/Deal Value: ₹{total_inr_cr} Cr
-Bullish Signal Ratio: {bullish_pct}%
-Growth Trajectory: {trajectory}
-Order Velocity Change: {velocity_pct}% (vs prior period)
+=== FINANCIAL FRAMEWORK SCORES ===
+Total Orderbook Value: ₹{total_inr_cr} Cr
+Annual Revenue (TTM): ₹{annual_revenue} Cr
+Market Cap: ₹{market_cap} Cr
 
-Sector Mix: {energy_mix}
-Contract/Deal Type Mix: {type_mix}
+1. COVERAGE RATIO (Order Book / Revenue): {coverage_ratio}x → {coverage_signal}
+   Scale: <1x=WEAK | 1-2x=STABLE | 2-4x=GOOD | 4-6x=STRONG | >6x=INVESTIGATE
 
-Recent Orders/Deals (last 15):
+2. MARKET CAP COVERAGE (Order Book / MCap %): {market_cap_pct}% → {market_signal}
+   Scale: >100%=DEEP_VALUE | 30-100%=SIGNIFICANT | 10-30%=MODERATE | <10%=NOISE
+
+3. EXECUTION FEASIBILITY: {execution_years} years to deliver → {execution_signal}
+   Scale: <4yr=FEASIBLE | 4-7yr=STRETCHED | >7yr=TRAP
+
+4. CLIENT QUALITY: {govt_pct}% govt/defence clients → {client_quality}
+
+5. ORDER INFLOW RATE (TTM new orders / Revenue): {inflow_rate}x → {inflow_signal}
+   Scale: >1.2x=GROWING | 0.8-1.2x=STABLE | <0.8x=DEPLETING
+
+6. CASH FLOW QUALITY (OCF/EBITDA): {cash_ccr} → {cash_signal}
+   Scale: >0.8=REAL_VALUE | 0.5-0.8=MODERATE | <0.5=ACCOUNTING_ONLY
+
+FRAMEWORK SCORE: {framework_score}/100
+
+=== ORDER ENTRIES (last 15) ===
 {recent_orders}
 
-Top Cluster Profiles:
-{clusters}
+=== ORDER TYPE MIX ===
+{type_mix}
 
-Apply logical reasoning to answer: Is this company's orderbook/deal pipeline healthy? Is it worth investing in?
+Growth Trajectory: {trajectory}
+Bullish Signals: {bullish_pct}%
+
+=== DECISION TREE ===
+Apply this logic chain:
+Step 1: Coverage Ratio → meaningful or skip?
+Step 2: Market Cap % → significant re-rating potential?
+Step 3: Execution feasibility → can they deliver?
+Step 4: Client quality → payment risk?
+Step 5: Inflow rate → pipeline growing or shrinking?
+Step 6: Cash conversion → are profits real?
+→ Final signal: BUY / HOLD / IGNORE
 
 Return ONLY this JSON:
 {{
   "overall_assessment": "bullish|bearish|neutral",
   "investment_grade": "A|B|C|D",
-  "order_quality_score": <0-100>,
-  "growth_trajectory": "accelerating|steady|decelerating|volatile",
-  "executive_summary": "3-4 sentences covering orderbook size, quality, momentum, and investment case",
-  "key_strengths": ["strength 1", "strength 2", "strength 3"],
-  "key_concerns": ["concern 1", "concern 2"],
-  "reasoning_chain": [
-    "Observation: [what the data shows]",
-    "Implication: [what it means]",
-    "Evidence: [specific orders that support this]",
-    "Conclusion: [investment view]"
-  ],
+  "order_quality_score": <0-100 using framework logic above>,
   "recommended_action": "strong_buy|buy|hold|reduce|sell",
-  "12m_outlook": "concise forward view based on order pipeline",
+  "executive_summary": "3-4 sentences using the framework — coverage ratio, market signal, execution, cash quality",
+  "decision_tree": {{
+    "step1_coverage": "pass|fail|investigate — [your reasoning]",
+    "step2_market_signal": "pass|fail — [your reasoning]",
+    "step3_execution": "pass|fail|trap — [your reasoning]",
+    "step4_client_quality": "high|moderate|low — [your reasoning]",
+    "step5_inflow": "growing|stable|depleting — [your reasoning]",
+    "step6_cash": "real|moderate|trap — [your reasoning]"
+  }},
+  "key_strengths": ["strength with specific data", "strength 2", "strength 3"],
+  "key_concerns": ["concern with specific data", "concern 2"],
+  "12m_outlook": "forward view grounded in coverage ratio and inflow rate",
   "catalysts_to_watch": ["catalyst 1", "catalyst 2"],
   "risks": ["risk 1", "risk 2"],
-  "sector_context": "how this compares to sector peers and why it matters"
+  "verdict": "one punchy line: BUY/HOLD/AVOID and why"
 }}"""
+
+
+def _fetch_fundamentals(symbol: str) -> dict:
+    """Fetch market cap + revenue from NSE/Yahoo as best-effort. Returns dict with Cr values."""
+    fundamentals = {}
+    try:
+        import yfinance as yf
+        ticker = symbol + ".NS"
+        info = yf.Ticker(ticker).info
+        mcap = info.get("marketCap", 0)
+        rev  = info.get("totalRevenue", 0)
+        ocf  = info.get("operatingCashflow", 0)
+        ebitda = info.get("ebitda", 0)
+        # Convert from INR units to Cr (yfinance returns raw INR)
+        fundamentals["market_cap_cr"]      = round(mcap / 1e7, 0) if mcap else 0
+        fundamentals["annual_revenue_cr"]  = round(rev  / 1e7, 0) if rev  else 0
+        fundamentals["ocf_cr"]             = round(ocf  / 1e7, 0) if ocf  else 0
+        fundamentals["ebitda_cr"]          = round(ebitda / 1e7, 0) if ebitda else 0
+        fundamentals["annual_capacity_cr"] = fundamentals["annual_revenue_cr"] * 1.2
+        logger.info(f"Fetched fundamentals for {symbol}: MCap=₹{fundamentals['market_cap_cr']}Cr Rev=₹{fundamentals['annual_revenue_cr']}Cr")
+    except Exception as e:
+        logger.warning(f"Could not fetch fundamentals for {symbol}: {e}")
+    return fundamentals
 
 
 def ai_orderbook_reasoning(symbol: str, ob_df: pd.DataFrame, trends: dict) -> dict:
     """
-    Use DeepSeek/Gemini/Groq to reason about orderbook trends.
-    Returns structured investment assessment with logical reasoning chain.
+    Use the 6-point financial framework + AI to reason about orderbook.
+    Framework: Coverage Ratio, Market Cap %, Execution, Client Quality, Inflow Rate, Cash Flow.
     """
     if ob_df is None or (hasattr(ob_df, "empty") and ob_df.empty):
         return {}
     if len(ob_df) == 0:
         return {}
 
-    # Build recent orders text
+    # ── Fetch fundamentals & compute framework metrics ────────────
+    fundamentals = _fetch_fundamentals(symbol)
+    fw = compute_orderbook_metrics(ob_df, fundamentals)
+
+    # ── Build recent orders text ──────────────────────────────────
     recent = ob_df.tail(15)
     recent_lines = []
     for _, row in recent.iterrows():
         line = (
             f"• {str(row.get('date',''))[:10]}: {row.get('description','?')} "
             f"[{row.get('value_numeric','')} {row.get('value_unit','')}]"
+            f" ₹{row.get('value_inr_cr','?')} Cr"
         )
         if row.get("reasoning"):
             line += f" → {row['reasoning']}"
         recent_lines.append(line)
 
-    # Energy mix
-    energy_mix = json.dumps(
-        ob_df.groupby("energy_type")["value_mw"].sum().dropna().round(0).astype(int).to_dict()
-    ) if "energy_type" in ob_df.columns else "{}"
-
-    # Cluster summary
-    cluster_text = ""
-    if trends.get("clusters"):
-        for c in trends["clusters"]:
-            cluster_text += (
-                f"  Cluster '{c['label']}': {c['count']} orders, "
-                f"avg {c.get('avg_mw','?')} MW, "
-                f"avg ₹{c.get('avg_inr_cr','?')} Cr, "
-                f"{c['bullish_pct']}% bullish\n"
-            )
-
     prompt = _REASONING_PROMPT.format(
         symbol=symbol,
-        total_entries=trends.get("total_entries", len(ob_df)),
-        total_mw=round(trends.get("total_mw", 0), 0),
         total_inr_cr=round(trends.get("total_inr_cr", 0), 0),
+        annual_revenue=fundamentals.get("annual_revenue_cr", "N/A (not fetched)"),
+        market_cap=fundamentals.get("market_cap_cr", "N/A (not fetched)"),
+        coverage_ratio=fw.get("coverage_ratio", "N/A"),
+        coverage_signal=fw.get("coverage_signal", "NO_DATA"),
+        market_cap_pct=fw.get("market_cap_coverage_pct", "N/A"),
+        market_signal=fw.get("market_signal", "NO_DATA"),
+        execution_years=fw.get("execution_years", "N/A"),
+        execution_signal=fw.get("execution_signal", "NO_DATA"),
+        govt_pct=fw.get("govt_client_pct", "N/A"),
+        client_quality=fw.get("client_quality", "UNKNOWN"),
+        inflow_rate=fw.get("inflow_rate", "N/A"),
+        inflow_signal=fw.get("inflow_signal", "NO_DATA"),
+        cash_ccr=fw.get("cash_conversion_ratio", "N/A"),
+        cash_signal=fw.get("cash_signal", "NO_DATA"),
+        framework_score=fw.get("framework_score", 0),
         bullish_pct=round(trends.get("bullish_ratio", 0) * 100, 1),
         trajectory=trends.get("growth_trajectory", "unknown"),
-        velocity_pct=trends.get("velocity_change_pct", "N/A"),
-        energy_mix=energy_mix,
         type_mix=json.dumps(trends.get("type_distribution", {})),
         recent_orders="\n".join(recent_lines) or "No recent orders",
-        clusters=cluster_text or "Insufficient data for clustering",
     )
 
     providers = []
