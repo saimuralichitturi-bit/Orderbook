@@ -431,11 +431,31 @@ def make_wordcloud(text_series: pd.Series):
 # AI analysis renderer
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+def _safe_float(val, default: float = 0.0) -> float:
+    """Safe float conversion — returns default on any error."""
+    try:
+        return float(val) if val is not None else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_json(val, default):
+    """Safe json.loads — returns default on any error."""
+    if not val or str(val) in ("nan", "None", ""):
+        return default
+    if isinstance(val, (list, dict)):
+        return val
+    try:
+        return json.loads(val)
+    except Exception:
+        return default
+
+
 def _render_analysis(a: dict):
     sentiment = a.get("sentiment", "neutral")
-    score     = float(a.get("sentiment_score", 0) or 0)
+    score     = _safe_float(a.get("sentiment_score", 0))
     signal    = a.get("action_signal", "watch")
-    conf      = float(a.get("confidence", 0) or 0)
+    conf      = _safe_float(a.get("confidence", 0))
     model     = a.get("model_used", "")
     horizon   = a.get("time_horizon", "")
 
@@ -949,30 +969,35 @@ with tab_filings:
                 st.markdown(f"[🔗 Open PDF ↗]({row['pdf_url']})")
 
             if filing_id and b2.button("🤖 Analyze", key=f"ai_{filing_id}_{idx}"):
-                analysis = load_analysis(filing_id)
-                if not analysis:
-                    # Auto-fetch PDF: local → Drive → NSE URL
-                    with st.spinner("Fetching PDF (local → Drive → NSE)..."):
-                        pdf_path = fetch_pdf_for_analysis(
-                            filing_id,
-                            str(row.get("pdf_url", "")),
-                            str(row.get("local_pdf", "")),
-                        )
-                    if pdf_path:
-                        with st.spinner("Running AI analysis..."):
-                            from processors.ai_analyzer import analyze_filing
-                            analysis = analyze_filing(
-                                pdf_path  = pdf_path,
-                                company   = str(row.get("company", selected_symbol)),
-                                subject   = subject,
-                                date_str  = str(row.get("broadcast_dt", ""))[:10],
-                                filing_id = filing_id,
+                try:
+                    analysis = load_analysis(filing_id)
+                    if not analysis:
+                        # Auto-fetch PDF: local → Drive → NSE URL
+                        with st.spinner("Fetching PDF (local → Drive → NSE)..."):
+                            pdf_path = fetch_pdf_for_analysis(
+                                filing_id,
+                                str(row.get("pdf_url", "")),
+                                str(row.get("local_pdf", "")),
                             )
-                    else:
-                        st.warning("PDF not available locally, on Drive, or via NSE URL.")
-                if analysis:
-                    with st.expander(f"AI Analysis — {subject[:55]}", expanded=True):
-                        _render_analysis(analysis)
+                        if pdf_path:
+                            with st.spinner("Running AI analysis..."):
+                                from processors.ai_analyzer import analyze_filing
+                                analysis = analyze_filing(
+                                    pdf_path  = pdf_path,
+                                    company   = str(row.get("company", selected_symbol)),
+                                    subject   = subject,
+                                    date_str  = str(row.get("broadcast_dt", ""))[:10],
+                                    filing_id = filing_id,
+                                )
+                        else:
+                            st.warning("PDF not available locally, on Drive, or via NSE URL.")
+                    if analysis:
+                        with st.expander(f"AI Analysis — {subject[:55]}", expanded=True):
+                            _render_analysis(analysis)
+                    elif analysis is not None:
+                        st.error("AI analysis failed — all providers returned empty results. Check API keys.")
+                except Exception as _e:
+                    st.error(f"❌ Analysis error: {_e}")
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -1185,9 +1210,9 @@ with tab_ai:
                         "sentiment":       row.get("ai_sentiment", ""),
                         "sentiment_score": row.get("ai_sentiment_score", 0),
                         "action_signal":   row.get("ai_signal", ""),
-                        "key_highlights":  json.loads(row.get("ai_highlights", "[]") or "[]"),
-                        "risk_factors":    json.loads(row.get("ai_risks", "[]") or "[]"),
-                        "financial_data":  json.loads(row.get("ai_financial", "{}") or "{}"),
+                        "key_highlights":  _safe_json(row.get("ai_highlights"), []),
+                        "risk_factors":    _safe_json(row.get("ai_risks"), []),
+                        "financial_data":  _safe_json(row.get("ai_financial"), {}),
                         "confidence":      row.get("ai_confidence", 0),
                         "model_used":      row.get("ai_model", ""),
                     }
@@ -1231,32 +1256,39 @@ with tab_ai:
 
             if selected_labels:
                 if st.button("🤖 Run Live Analysis", type="primary", use_container_width=False):
+                    from processors.ai_analyzer import analyze_filing
+                    success_count = 0
                     for label in selected_labels:
-                        row   = filing_opts[label]
-                        fid   = str(row.get("filing_id", ""))
-                        subj  = str(row.get("subject", ""))
-                        with st.spinner(f"Analyzing: {label[:55]}..."):
-                            pdf_path = fetch_pdf_for_analysis(
-                                fid,
-                                str(row.get("pdf_url", "")),
-                                str(row.get("local_pdf", "")),
-                            )
-                            if pdf_path:
-                                from processors.ai_analyzer import analyze_filing
-                                result = analyze_filing(
-                                    pdf_path  = pdf_path,
-                                    company   = str(row.get("company", selected_symbol)),
-                                    subject   = subj,
-                                    date_str  = str(row.get("broadcast_dt", ""))[:10],
-                                    filing_id = fid,
+                        row  = filing_opts[label]
+                        fid  = str(row.get("filing_id", ""))
+                        subj = str(row.get("subject", ""))
+                        try:
+                            with st.spinner(f"Analyzing: {label[:55]}..."):
+                                pdf_path = fetch_pdf_for_analysis(
+                                    fid,
+                                    str(row.get("pdf_url", "")),
+                                    str(row.get("local_pdf", "")),
                                 )
-                                if result:
-                                    with st.expander(f"✅ {label[:60]}", expanded=True):
-                                        _render_analysis(result)
+                                if pdf_path:
+                                    result = analyze_filing(
+                                        pdf_path  = pdf_path,
+                                        company   = str(row.get("company", selected_symbol)),
+                                        subject   = subj,
+                                        date_str  = str(row.get("broadcast_dt", ""))[:10],
+                                        filing_id = fid,
+                                    )
+                                    if result:
+                                        success_count += 1
+                                        with st.expander(f"✅ {label[:60]}", expanded=True):
+                                            _render_analysis(result)
+                                    else:
+                                        st.error(f"AI analysis returned no result for: {label[:50]}")
                                 else:
-                                    st.error(f"Analysis failed for: {label[:50]}")
-                            else:
-                                st.warning(f"PDF not available: {label[:50]}")
+                                    st.warning(f"PDF not available (local/Drive/NSE): {label[:50]}")
+                        except Exception as _e:
+                            st.error(f"❌ Error analyzing '{label[:50]}': {_e}")
+                    if success_count:
+                        st.success(f"✅ Analyzed {success_count}/{len(selected_labels)} filings successfully.")
 
 
 # ──────────────────────────────────────────────────────────────────
