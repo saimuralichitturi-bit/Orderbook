@@ -680,28 +680,28 @@ def _df_to_records(df: pd.DataFrame) -> list[dict]:
 
 # ─── AI Reasoning ─────────────────────────────────────────────────
 
-_REASONING_PROMPT = """You are a senior equity analyst specializing in Indian infrastructure, energy, and conglomerate companies.
+_REASONING_PROMPT = """You are a senior equity analyst covering Indian listed companies across ALL sectors — energy, IT services, banking, manufacturing, pharma, telecom, and conglomerates.
 
 Company: {symbol}
-Orderbook Intelligence Report:
+Orderbook & Deal Intelligence Report:
 
-Total Orders Analyzed: {total_entries}
-Total Capacity Won: {total_mw} MW
-Total Contract Value: ₹{total_inr_cr} Cr
+Total Orders/Deals Analyzed: {total_entries}
+Total Capacity Won (energy only): {total_mw} MW
+Total Contract/Deal Value: ₹{total_inr_cr} Cr
 Bullish Signal Ratio: {bullish_pct}%
 Growth Trajectory: {trajectory}
 Order Velocity Change: {velocity_pct}% (vs prior period)
 
-Energy Mix: {energy_mix}
-Contract Type Mix: {type_mix}
+Sector Mix: {energy_mix}
+Contract/Deal Type Mix: {type_mix}
 
-Recent Orders (last 15):
+Recent Orders/Deals (last 15):
 {recent_orders}
 
 Top Cluster Profiles:
 {clusters}
 
-Apply logical reasoning to answer: Is this company's orderbook healthy? Is it worth investing in?
+Apply logical reasoning to answer: Is this company's orderbook/deal pipeline healthy? Is it worth investing in?
 
 Return ONLY this JSON:
 {{
@@ -731,7 +731,9 @@ def ai_orderbook_reasoning(symbol: str, ob_df: pd.DataFrame, trends: dict) -> di
     Use DeepSeek/Gemini/Groq to reason about orderbook trends.
     Returns structured investment assessment with logical reasoning chain.
     """
-    if ob_df.empty:
+    if ob_df is None or (hasattr(ob_df, "empty") and ob_df.empty):
+        return {}
+    if len(ob_df) == 0:
         return {}
 
     # Build recent orders text

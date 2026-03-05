@@ -1466,6 +1466,8 @@ with tab_ob:
     st.markdown("---")
 
     # ── AI Assessment Card ────────────────────────────────────────
+    if not reasoning:
+        st.warning("⚠️ AI reasoning not yet generated. Click **🤖 Refresh AI Analysis** to run it.")
     if reasoning:
         assess   = reasoning.get("overall_assessment", "neutral")
         action   = reasoning.get("recommended_action", "hold")
