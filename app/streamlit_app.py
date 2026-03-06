@@ -1310,6 +1310,7 @@ with tab_ob:
 
     from processors.sector_framework import (
         get_sector, fetch_fundamentals, compute_framework,
+        score_all_filings,
         SECTOR_LABELS, ALTERNATIVE_METRICS, ORDERBOOK_SECTORS, PARTIAL_SECTORS
     )
     from processors.orderbook_engine import (
@@ -1389,7 +1390,7 @@ with tab_ob:
             prog.progress(int((offset+cur)/max(total,1)*100), text=msg[:80])
 
         with st.spinner(f"Extracting {offset+1}–{end} / {total}…"):
-            batch_ob = batch_extract_orderbook(selected_symbol, batch_df, _prog)
+            batch_ob = batch_extract_orderbook(selected_symbol, batch_df, _prog, sector=sector)
 
         if not batch_ob.empty:
             ob_df = pd.concat([ob_df, batch_ob], ignore_index=True).drop_duplicates() if not ob_df.empty else batch_ob
@@ -1527,6 +1528,40 @@ with tab_ob:
         show_df["confidence"] = show_df["confidence"].apply(lambda x: f"{x:.0%}" if pd.notna(x) else "—")
     st.dataframe(show_df[display_cols].sort_values("date", ascending=False) if "date" in show_df.columns else show_df[display_cols],
                  use_container_width=True, hide_index=True)
+
+    # ── Per-filing re-rating impact ────────────────────────────────
+    if applicable or partial:
+        st.markdown("---")
+        st.markdown("#### 🎯 Per-Filing Impact (Which orders actually matter?)")
+        st.caption("Each order scored individually. Only entries with ₹ value shown. Sorted by MCap impact.")
+
+        scored = score_all_filings(selected_symbol, ob_df, fundamentals)
+        scored = [s for s in scored if (s.get("mcap_impact_pct") or 0) > 0]
+
+        if scored:
+            rows = []
+            for s in scored:
+                color_map = {"green": "🟢", "orange": "🟡", "blue": "🔵", "grey": "⚫"}
+                icon = color_map.get(s["impact_color"], "⚫")
+                rows.append({
+                    "Date":        s["date"],
+                    "Description": s["description"][:60],
+                    "Value (₹ Cr)": f"₹{s['order_inr_cr']:,.0f}" if s["order_inr_cr"] else "—",
+                    "MCap Impact":  f"{s['mcap_impact_pct']:.2f}%" if s["mcap_impact_pct"] else "—",
+                    "Revenue %":    f"{s['revenue_pct']:.2f}%" if s["revenue_pct"] else "—",
+                    "Signal":       f"{icon} {s['impact_label']}",
+                })
+            st.dataframe(rows, use_container_width=True, hide_index=True)
+
+            rerating = [s for s in scored if s["is_rerating"]]
+            if rerating:
+                st.success(f"🚀 **{len(rerating)} RE-RATING EVENT(s) detected** — orders with MCap impact ≥ 5%")
+                for r in rerating:
+                    st.markdown(f"- **{r['date']}** · {r['description']} · MCap impact **{r['mcap_impact_pct']:.2f}%**")
+            else:
+                st.info("No single order crosses the 5% MCap impact threshold. Framework says: NOISE.")
+        else:
+            st.info("No ₹-valued entries found for impact scoring.")
 
 
 

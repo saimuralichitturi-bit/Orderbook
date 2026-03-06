@@ -171,6 +171,71 @@ Return ONLY this JSON (no markdown, no explanation):
 
 If no orderbook data found, return: {{"has_orderbook_data": false, "entries": []}}"""
 
+# ── Sector-specific extraction hints ─────────────────────────────
+
+_SECTOR_HINTS = {
+    "epc_infra": (
+        "FOCUS: Extract ₹ Crore order wins, project awards, EPC contracts, "
+        "L1/L2 bids won, government tenders. MW/GW capacity for power projects. "
+        "Duration years, client (govt/private/PSU). Mark is_positive_signal=true for order wins."
+    ),
+    "auto_mfg": (
+        "FOCUS: Production order backlog, export orders (units), supply contracts "
+        "with OEMs, JV/tech agreements, new model launches with volume commitments. "
+        "JLR backlog in GBP Bn counts — convert to INR Cr (1 GBP = 107 INR)."
+    ),
+    "it_services": (
+        "FOCUS: Deal wins in USD Mn/Bn (TCV = Total Contract Value), contract renewals, "
+        "new client logos, multi-year outsourcing agreements. "
+        "Convert USD to INR (1 USD = 85 INR). Duration in years matters. "
+        "Ignore quarterly revenue guidance — only extract specific deal/contract announcements."
+    ),
+    "banking": (
+        "FOCUS: Loan book size (₹ Cr), NPA ratio (%), NIM (%), CASA ratio (%), "
+        "credit growth YoY (%). Sanctions/disbursements in specific sectors. "
+        "Regulatory penalties count as negative entries."
+    ),
+    "nbfc": (
+        "FOCUS: AUM (₹ Cr), new disbursements, NPA %, credit cost, "
+        "co-lending agreements, securitisation. "
+    ),
+    "psu_energy": (
+        "FOCUS: Upstream capex commitments (₹ Cr), ONGC/Oil India block acquisitions, "
+        "production targets (MMT/MMSCMD), refinery expansions. "
+        "Crude price sensitivity comments NOT needed — only firm capex/contracts."
+    ),
+    "conglomerate": (
+        "FOCUS: Segment-level orders — identify which segment (retail/energy/telecom/media). "
+        "Green energy orders for Reliance: MW + ₹ Cr value. "
+        "Retail: store addition targets, GMV. Do NOT aggregate across segments."
+    ),
+    "fmcg": (
+        "FOCUS: Volume growth mentions (%), new product launches, distribution milestones, "
+        "export contract wins. Avoid revenue guidance — only firm supply/distribution agreements."
+    ),
+    "pharma": (
+        "FOCUS: ANDA approvals (US FDA), product launches in US/EU, "
+        "licensing/supply agreements, R&D milestones, USFDA plant observations. "
+        "Express as # of ANDAs or deal value in USD Mn."
+    ),
+    "telecom": (
+        "FOCUS: 5G rollout contracts (₹ Cr), enterprise B2B deals (TCV), "
+        "spectrum acquisitions, tower agreements. ARPU improvement = NOT an order."
+    ),
+}
+
+def _build_extraction_prompt(company: str, subject: str, date: str, text: str,
+                               regex_hits: list, sector: str = "unknown") -> str:
+    hint = _SECTOR_HINTS.get(sector, "Extract all contracts, orders, deals, and significant financial commitments.")
+    return _EXTRACTION_PROMPT.format(
+        company=company, subject=subject, date=date,
+        text=text[:4000], regex_hits=str(regex_hits[:20])
+    ).replace(
+        "Extract ALL entries representing business orders",
+        f"Sector: {sector.upper()}\nSector guidance: {hint}\n\nExtract ALL entries representing business orders"
+    )
+
+
 
 def _call_ai_extraction(prompt: str) -> dict:
     """Try DeepSeek → Gemini → Groq for structured extraction."""
@@ -227,6 +292,7 @@ def extract_orderbook_from_pdf(
     date_str: str,
     filing_id: str,
     force: bool = False,
+    sector: str = "unknown",
 ) -> dict:
     """
     Extract orderbook entries from a single PDF.
@@ -260,12 +326,13 @@ def extract_orderbook_from_pdf(
         f"{h['value']} {h['unit']}" for h in regex_hits[:10]
     ) or "none detected"
 
-    prompt = _EXTRACTION_PROMPT.format(
+    prompt = _build_extraction_prompt(
         company=company,
         subject=subject,
         date=date_str,
         text=text[:18000],
         regex_hits=regex_summary,
+        sector=sector,
     )
 
     result = _call_ai_extraction(prompt)
@@ -290,6 +357,7 @@ def batch_extract_orderbook(
     symbol: str,
     df: pd.DataFrame,
     progress_callback=None,
+    sector: str = "unknown",
 ) -> pd.DataFrame:
     """
     Process all PDFs for a company and return a flat DataFrame of orderbook entries.
@@ -329,6 +397,7 @@ def batch_extract_orderbook(
             subject=str(row.get("subject", "")),
             date_str=date_str,
             filing_id=filing_id,
+            sector=sector,
         )
         _append_entries(all_entries, result, row)
 
@@ -430,6 +499,9 @@ def _append_entries(entries: list, result: dict, row) -> None:
             "confidence":      float(entry.get("confidence", 0.5)),
             "total_mw_filing": result.get("total_mw_this_filing"),
             "total_inr_filing":result.get("total_inr_cr_this_filing"),
+            # re-rating placeholder — filled by score_all_filings in UI
+            "mcap_impact_pct": None,
+            "impact_label":    None,
         })
 
 

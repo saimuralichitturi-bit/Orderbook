@@ -186,3 +186,73 @@ def compute_framework(symbol: str, orderbook_inr_cr: float, fundamentals: dict) 
         )
 
     return result
+
+
+# ── Per-filing re-rating detector ────────────────────────────────
+
+def score_single_filing(symbol: str, order_inr_cr: float, fundamentals: dict) -> dict:
+    """
+    Score a SINGLE NSE announcement against the framework.
+    Returns whether this individual order is a re-rating event.
+
+    Logic:
+      - Coverage contribution = order_inr_cr / annual_revenue
+      - MCap impact          = (order_inr_cr / market_cap) * 100
+    """
+    rev  = fundamentals.get("annual_revenue_cr", 0)
+    mcap = fundamentals.get("market_cap_cr", 0)
+    sector = get_sector(symbol)
+
+    result = {
+        "symbol":         symbol,
+        "order_inr_cr":   order_inr_cr,
+        "sector":         sector,
+        "is_rerating":    False,
+        "impact_label":   "NOISE",
+        "impact_color":   "grey",
+        "mcap_impact_pct": None,
+        "revenue_pct":     None,
+    }
+
+    if not order_inr_cr or order_inr_cr <= 0:
+        return result
+
+    if rev > 0:
+        rev_pct = (order_inr_cr / rev) * 100
+        result["revenue_pct"] = round(rev_pct, 2)
+
+    if mcap > 0:
+        mcap_pct = (order_inr_cr / mcap) * 100
+        result["mcap_impact_pct"] = round(mcap_pct, 2)
+
+        # Thresholds per framework
+        if mcap_pct >= 5:
+            result["is_rerating"]  = True
+            result["impact_label"] = "🚀 RE-RATING EVENT"
+            result["impact_color"] = "green"
+        elif mcap_pct >= 2:
+            result["impact_label"] = "👀 SIGNIFICANT"
+            result["impact_color"] = "orange"
+        elif mcap_pct >= 0.5:
+            result["impact_label"] = "📌 MODERATE"
+            result["impact_color"] = "blue"
+        else:
+            result["impact_label"] = "NOISE"
+            result["impact_color"] = "grey"
+
+    return result
+
+
+def score_all_filings(symbol: str, ob_df, fundamentals: dict) -> list:
+    """Score every row in ob_df individually. Returns list of impact dicts."""
+    results = []
+    for _, row in ob_df.iterrows():
+        inr = row.get("value_inr_cr", 0) or 0
+        r = score_single_filing(symbol, float(inr), fundamentals)
+        r["description"] = str(row.get("description", ""))[:80]
+        r["date"]        = str(row.get("date", ""))[:10]
+        r["confidence"]  = row.get("confidence", 0)
+        results.append(r)
+    # Sort by mcap impact descending
+    results.sort(key=lambda x: x.get("mcap_impact_pct") or 0, reverse=True)
+    return results
