@@ -1308,14 +1308,18 @@ _ENERGY_COLORS = {
 with tab_ob:
     st.markdown("### 📦 Orderbook Intelligence")
 
-    from processors.sector_framework import (
-        get_sector, fetch_fundamentals, compute_framework,
-        score_all_filings,
-        SECTOR_LABELS, ALTERNATIVE_METRICS, ORDERBOOK_SECTORS, PARTIAL_SECTORS
-    )
-    from processors.orderbook_engine import (
-        batch_extract_orderbook, save_orderbook, load_orderbook,
-    )
+    try:
+        from processors.sector_framework import (
+            get_sector, fetch_fundamentals, compute_framework,
+            score_all_filings,
+            SECTOR_LABELS, ALTERNATIVE_METRICS, ORDERBOOK_SECTORS, PARTIAL_SECTORS
+        )
+        from processors.orderbook_engine import (
+            batch_extract_orderbook, save_orderbook, load_orderbook,
+        )
+    except ImportError as _ie:
+        st.error(f"Import error in orderbook engine: {_ie}")
+        st.stop()
 
     sector       = get_sector(selected_symbol)
     sector_label = SECTOR_LABELS.get(sector, sector)
