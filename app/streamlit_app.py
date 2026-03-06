@@ -1344,6 +1344,61 @@ with tab_ob:
             f"{selected_symbol} is a {sector_label} company — "
             "different fundamentals drive value here."
         )
+
+        # Show correct sector KPIs instead
+        from processors.sector_kpis import fetch_sector_kpis
+        with st.spinner(f"Loading {sector_label} KPIs for {selected_symbol}…"):
+            kpi_data = fetch_sector_kpis(selected_symbol, sector)
+
+        if kpi_data:
+            st.markdown(f"#### 📊 {kpi_data.get('kpi_label', 'Sector KPIs')} — {selected_symbol}")
+
+            # Price + analyst summary
+            price = kpi_data.get("price")
+            mcap  = kpi_data.get("mcap_cr")
+            target = kpi_data.get("analyst_target")
+            rating = kpi_data.get("analyst_rating", "")
+            w52h   = kpi_data.get("52w_high")
+            w52l   = kpi_data.get("52w_low")
+            upside = round(((target - price) / price) * 100, 1) if price and target else None
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Price", f"₹{price:,.1f}" if price else "N/A")
+            c2.metric("MCap", f"₹{mcap:,.0f} Cr" if mcap else "N/A")
+            c3.metric("Analyst Target", f"₹{target:,.0f}" if target else "N/A",
+                      delta=f"{upside:+.1f}% upside" if upside else None)
+            c4.metric("Consensus", rating if rating else "N/A")
+
+            st.caption(f"52w range: ₹{w52l:,.0f} – ₹{w52h:,.0f}" if w52h and w52l else "")
+            st.markdown("---")
+
+            # KPI cards
+            kpis = kpi_data.get("kpis", [])
+            cols = st.columns(min(len(kpis), 3))
+            color_map = {"green": "#3fb950", "orange": "#ffa726", "red": "#f85149", "neutral": "#58a6ff"}
+            for i, (label, val, desc, sig) in enumerate(kpis):
+                clr = color_map.get(sig, "#8b949e")
+                with cols[i % 3]:
+                    st.markdown(
+                        f'<div style="background:#161b22;border:1px solid #30363d;'
+                        f'border-radius:10px;padding:14px 16px;margin-bottom:10px">'
+                        f'<div style="color:#8b949e;font-size:11px">{label}</div>'
+                        f'<div style="font-size:26px;font-weight:800;color:{clr}">{val}</div>'
+                        f'<div style="color:#8b949e;font-size:11px;margin-top:4px">{desc}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+            # What to watch
+            watch = kpi_data.get("watch", [])
+            if watch:
+                st.markdown("**What to track (not in yfinance — check quarterly results):**")
+                for w in watch:
+                    st.markdown(f"- {w}")
+
+            if kpi_data.get("note"):
+                st.caption(kpi_data["note"])
+
         st.stop()
 
     # ── Load / build orderbook ────────────────────────────────────
