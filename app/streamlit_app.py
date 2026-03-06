@@ -1418,7 +1418,33 @@ with tab_ob:
     with st.spinner("Fetching live fundamentals (Revenue, MCap)…"):
         fundamentals = fetch_fundamentals(selected_symbol)
 
-    total_inr = float(ob_df["value_inr_cr"].dropna().sum()) if "value_inr_cr" in ob_df.columns else 0
+    # Exclude FLAGGED entries from totals (verification layer)
+    if "include_in_totals" in ob_df.columns:
+        clean_df = ob_df[ob_df["include_in_totals"] != False]
+    else:
+        clean_df = ob_df
+    total_inr = float(clean_df["value_inr_cr"].dropna().sum()) if "value_inr_cr" in clean_df.columns else 0
+
+    # Verification summary
+    if "verification_status" in ob_df.columns:
+        v_counts = ob_df["verification_status"].value_counts().to_dict()
+        trusted   = v_counts.get("TRUSTED", 0)
+        verified  = sum(v for k, v in v_counts.items() if "VERIFIED" in k and "UN" not in k)
+        flagged   = sum(v for k, v in v_counts.items() if "FLAGGED" in k)
+        unverified = v_counts.get("UNVERIFIED ⚠️", 0)
+        st.markdown(
+            f'<div style="background:#161b22;border:1px solid #30363d;border-radius:8px;'
+            f'padding:10px 16px;margin-bottom:12px;font-size:13px">'
+            f'<b style="color:#e6edf3">Verification:</b>&nbsp;&nbsp;'
+            f'<span style="color:#3fb950">✅ {trusted} Trusted</span>&nbsp;&nbsp;'
+            f'<span style="color:#3fb950">✅ {verified} Verified</span>&nbsp;&nbsp;'
+            f'<span style="color:#ffa726">⚠️ {unverified} Unverified</span>&nbsp;&nbsp;'
+            f'<span style="color:#f85149">❌ {flagged} Flagged</span>'
+            f'&nbsp;&nbsp;<span style="color:#8b949e;font-size:11px">'
+            f'(Groq extracts → Gemini cross-checks confidence &lt; 0.8)</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
     fw = compute_framework(selected_symbol, total_inr, fundamentals)
 
     rev  = fundamentals.get("annual_revenue_cr", 0)
@@ -1521,7 +1547,7 @@ with tab_ob:
     st.caption("Raw data extracted from NSE filings PDFs. Values are AI-extracted — verify against official announcements.")
 
     show_df = ob_df.copy()
-    display_cols = [c for c in ["date","description","value_numeric","value_unit","value_inr_cr","counterparty","is_positive","confidence"] if c in show_df.columns]
+    display_cols = [c for c in ["date","description","value_numeric","value_unit","value_inr_cr","counterparty","is_positive","confidence","verification_status"] if c in show_df.columns]
     if "value_inr_cr" in show_df.columns:
         show_df["value_inr_cr"] = show_df["value_inr_cr"].apply(lambda x: f"₹{x:,.0f} Cr" if pd.notna(x) and x > 0 else "—")
     if "confidence" in show_df.columns:

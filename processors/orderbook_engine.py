@@ -340,6 +340,14 @@ def extract_orderbook_from_pdf(
     result["company"] = company
     result["subject"] = subject
     result["date"] = date_str
+
+    # Cross-model verification — Gemini checks low-confidence entries
+    if result.get("has_orderbook_data") and result.get("entries"):
+        try:
+            from processors.verifier import verify_entries
+            result["entries"] = verify_entries(result["entries"], text)
+        except Exception as ve:
+            logger.warning(f"Verifier skipped: {ve}")
     result["regex_hits_count"] = len(regex_hits)
 
     cache_path.write_text(json.dumps(result, indent=2))
@@ -497,11 +505,15 @@ def _append_entries(entries: list, result: dict, row) -> None:
             "is_positive":     bool(entry.get("is_positive_signal", True)),
             "reasoning":       entry.get("reasoning", ""),
             "confidence":      float(entry.get("confidence", 0.5)),
-            "total_mw_filing": result.get("total_mw_this_filing"),
-            "total_inr_filing":result.get("total_inr_cr_this_filing"),
+            "total_mw_filing":       result.get("total_mw_this_filing"),
+            "total_inr_filing":      result.get("total_inr_cr_this_filing"),
+            # verification
+            "verification_status":   entry.get("verification_status", "UNVERIFIED ⚠️"),
+            "verification_note":     entry.get("verification_note", ""),
+            "include_in_totals":     entry.get("include_in_totals", True),
             # re-rating placeholder — filled by score_all_filings in UI
-            "mcap_impact_pct": None,
-            "impact_label":    None,
+            "mcap_impact_pct":       None,
+            "impact_label":          None,
         })
 
 
