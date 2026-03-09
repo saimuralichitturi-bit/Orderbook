@@ -326,11 +326,21 @@ def extract_orderbook_from_pdf(
         f"{h['value']} {h['unit']}" for h in regex_hits[:10]
     ) or "none detected"
 
+    # Clean + compress text before LLM call
+    try:
+        from processors.compressor import prepare_for_llm
+        prep = prepare_for_llm(text, sector=sector, use_compression=True)
+        processed_text = prep["text"]
+        logger.debug(f"Text prep: {prep['original_len']:,} → {prep['final_len']:,} chars via {prep['method']}")
+    except Exception as _ce:
+        logger.warning(f"Text prep failed: {_ce} — using raw text")
+        processed_text = text[:18000]
+
     prompt = _build_extraction_prompt(
         company=company,
         subject=subject,
         date=date_str,
-        text=text[:18000],
+        text=processed_text,
         regex_hits=regex_summary,
         sector=sector,
     )
