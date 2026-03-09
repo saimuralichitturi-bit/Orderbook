@@ -282,15 +282,13 @@ class DriveHandler:
     # ── Bulk sync ─────────────────────────────────────────────────
 
     def sync_all(self):
-        """Push all local parquet + PDFs + analysis JSONs to Drive."""
-        from config import PARQUET_DIR, PDF_DIR, ANALYSIS_DIR
+        """Push parquets + analysis JSONs to Drive. PDFs are NOT stored — fetched on-demand from NSE."""
+        from config import PARQUET_DIR, ANALYSIS_DIR
 
         parquets = list(PARQUET_DIR.glob("*.parquet"))
-        pdfs     = list(PDF_DIR.glob("*.pdf"))
         jsons    = list(ANALYSIS_DIR.glob("*.json"))
 
-        logger.info(f"Syncing → Drive: {len(parquets)} parquets | {len(pdfs)} PDFs | {len(jsons)} JSONs")
+        logger.info(f"Syncing → Drive: {len(parquets)} parquets | {len(jsons)} analysis JSONs (PDFs skipped — on-demand fetch)")
         for p in parquets: self.upload_parquet(p)
-        for p in pdfs:     self.upload_pdf(p)
         for p in jsons:    self.upload_json(p)
         logger.info("Drive sync complete")

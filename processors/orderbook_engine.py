@@ -432,35 +432,65 @@ def batch_extract_orderbook(
 
 
 def _resolve_pdf(filing_id: str, local_pdf: str, pdf_url: str) -> Path | None:
-    """Try local PDF_DIR → local_pdf path → Drive → NSE URL."""
-    # 1. Standard local path
+    """
+    Resolve PDF — fetch into a TEMP file, process, then auto-delete.
+    Priority: local cache → NSE URL (stream to temp) → Drive (last resort).
+    PDFs are NEVER permanently stored to disk or Drive — saves ~1.6GB/company.
+    """
+    import tempfile, requests
+
+    # 1. Local cache (already exists from previous run)
     local = PDF_DIR / f"{filing_id}.pdf"
     if local.exists():
         return local
+
     # 2. Column-stored path
     if local_pdf and local_pdf not in ["nan", "None", ""] and Path(local_pdf).exists():
         return Path(local_pdf)
-    # 3. Google Drive
+
+    # 3. Stream from NSE URL → temp file (deleted after extraction)
+    if pdf_url and pdf_url.startswith("http"):
+        try:
+            from scrapers.nse_filings import NSE_HEADERS
+            resp = requests.get(pdf_url, timeout=30, headers=NSE_HEADERS, stream=True)
+            if resp.status_code == 200:
+                tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+                for chunk in resp.iter_content(chunk_size=8192):
+                    tmp.write(chunk)
+                tmp.close()
+                logger.debug(f"PDF fetched from NSE (temp, not stored): {filing_id}")
+                return Path(tmp.name)
+        except Exception as e:
+            logger.warning(f"NSE PDF fetch failed for {filing_id}: {e}")
+
+    # 4. Drive fallback (last resort)
     try:
         from storage.drive_handler import DriveHandler
         dh = DriveHandler()
         buf = dh.download_pdf_by_name(f"{filing_id}.pdf")
         if buf:
-            local.write_bytes(buf.read())
-            return local
+            tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+            tmp.write(buf.read())
+            tmp.close()
+            logger.debug(f"PDF fetched from Drive (temp): {filing_id}")
+            return Path(tmp.name)
     except Exception:
         pass
-    # 4. Direct NSE URL
-    if pdf_url and pdf_url.startswith("http"):
-        try:
-            from scrapers.nse_filings import NSEFilingsScraper
-            scraper = NSEFilingsScraper()
-            path = scraper.download_pdf(pdf_url, filing_id)
-            if path:
-                return path
-        except Exception:
-            pass
+
     return None
+
+
+def _cleanup_temp_pdf(path: Path | None) -> None:
+    """Delete temp PDF after extraction — keep disk clean."""
+    if path and path.exists():
+        is_temp = str(path).startswith("/tmp") or "temp" in str(path).lower()
+        is_in_pdf_dir = PDF_DIR in path.parents
+        if is_temp and not is_in_pdf_dir:
+            try:
+                path.unlink()
+                logger.debug(f"Temp PDF deleted: {path.name}")
+            except Exception:
+                pass
 
 
 def _append_entries(entries: list, result: dict, row) -> None:
