@@ -234,6 +234,9 @@ class NSEFilingsScraper:
         if "broadcast_dt" in df.columns:
             df = df.sort_values("broadcast_dt", ascending=False)
 
+        # Sanitize column names — remove BOM and encoding artifacts
+        df.columns = [c.encode('ascii','ignore').decode().strip().strip('"').lower().replace(' ','_') for c in df.columns]
+        df = df.loc[:, ~df.columns.duplicated()]
         df.to_parquet(path, index=False, compression="snappy")
         logger.info(f"Parquet saved: {path.name} ({len(df)} rows, {path.stat().st_size//1024} KB)")
         return path
