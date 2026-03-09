@@ -724,8 +724,28 @@ if not selected_symbol:
     # ── Auto-sync from Drive if no local data ────────────────────
     if all_df.empty and not st.session_state.get("_drive_sync_tried"):
         st.session_state["_drive_sync_tried"] = True
-        with st.spinner("☁️ No local data — fetching from Google Drive..."):
+        sync_placeholder = st.empty()
+        sync_placeholder.info("☁️ No local data — fetching from Google Drive...")
+        try:
+            import signal as _signal
+            def _timeout_handler(signum, frame):
+                raise TimeoutError("Drive sync timeout")
+            _signal.signal(_signal.SIGALRM, _timeout_handler)
+            _signal.alarm(20)  # 20 second max
             synced = _try_drive_sync(show_status=False)
+            _signal.alarm(0)
+        except TimeoutError:
+            synced = False
+            sync_placeholder.warning("⏱️ Drive sync timed out. Check credentials in Streamlit secrets.")
+        except Exception as _se:
+            synced = False
+            sync_placeholder.warning(f"Drive sync failed: {_se}")
+        finally:
+            try:
+                _signal.alarm(0)
+            except Exception:
+                pass
+        sync_placeholder.empty()
         if synced:
             st.cache_data.clear()
             st.rerun()
